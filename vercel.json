@@ -1,0 +1,65 @@
+{
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Pacifica-Key" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), accelerometer=(), autoplay=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), bluetooth=(), display-capture=(), encrypted-media=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(), picture-in-picture=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://static.cloudflareinsights.com https://vercel.live; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' https://app.pacifica.fi https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'self' https://app.pacifica.fi https://mainnet-staging.pacifica.team https://test-app.pacifica.fi http://localhost:3000; base-uri 'self'; object-src 'none'; form-action 'self'" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/favico/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=604800" }
+      ]
+    },
+    {
+      "source": "/offline.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    }
+  ]
+}
