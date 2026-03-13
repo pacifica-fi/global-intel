@@ -32,6 +32,8 @@ const TRACKED_IDS = [
   'avalanche-2',
   'chainlink',
 ];
+const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
+const PANEL_ID = 'crypto-channels';
 
 function asNumber(value: unknown): number {
   const num = Number(value);
@@ -147,7 +149,22 @@ export class CryptoChannelsPanel extends Panel {
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    super({ id: 'crypto-channels', title: t('panels.cryptoChannels'), showCount: false });
+    super({ id: PANEL_ID, title: t('panels.cryptoChannels'), showCount: false });
+    const saved = localStorage.getItem(PANEL_SPANS_KEY);
+    let spans: Record<string, number> = {};
+    try {
+      spans = saved ? JSON.parse(saved) as Record<string, number> : {};
+    } catch {
+      spans = {};
+    }
+    const currentSpan = spans[PANEL_ID];
+    if (!currentSpan || currentSpan === 4) {
+      this.getElement().classList.remove('span-1', 'span-2', 'span-3', 'span-4');
+      this.getElement().classList.add('span-2', 'resized');
+      spans[PANEL_ID] = 2;
+      localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
+    }
+    this.getElement().classList.add('col-span-2');
     void this.fetchData();
     this.refreshInterval = setInterval(() => void this.fetchData(), 4 * 60 * 1000);
   }

@@ -15751,6 +15751,12 @@ body.has-breaking-alert .panels-grid {
   color: var(--text-faint);
 }
 
+@media (max-width: 900px) {
+  .panel[data-panel="crypto-channels"] {
+    grid-column: span 1 !important;
+  }
+}
+
 @media (max-width: 640px) {
   .crypto-channels-summary {
     grid-template-columns: 1fr;
