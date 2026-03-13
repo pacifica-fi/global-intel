@@ -12,9 +12,122 @@ const CACHE_TTL_SECONDS = 120; // 2 minutes
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
 const RESPONSE_CACHE_CONTROL = 'public, max-age=120, s-maxage=120, stale-while-revalidate=60';
 const CACHE_VERSION = 'v2';
+const BINANCE_SYMBOL_MAP = {
+  bitcoin: 'BTCUSDT',
+  ethereum: 'ETHUSDT',
+  solana: 'SOLUSDT',
+  binancecoin: 'BNBUSDT',
+  ripple: 'XRPUSDT',
+  cardano: 'ADAUSDT',
+};
 
 // In-memory fallback cache for the current instance.
 let fallbackCache = { key: '', payload: null, timestamp: 0 };
+
+function safeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseIds(ids) {
+  return ids.split(',').map((id) => id.trim().toLowerCase()).filter(Boolean);
+}
+
+function buildSimplePriceResponse(items, include24hrChange) {
+  const result = {};
+  for (const item of items) {
+    result[item.id] = {
+      usd: item.price,
+      usd_24h_change: include24hrChange === 'true' ? item.change24h : undefined,
+    };
+  }
+  return result;
+}
+
+async function fetchFromBinance(ids, endpoint, include24hrChange) {
+  const requested = ids
+    .map((id) => ({ id, symbol: BINANCE_SYMBOL_MAP[id] }))
+    .filter((entry) => Boolean(entry.symbol));
+  if (requested.length === 0) return null;
+
+  const symbols = requested.map((entry) => entry.symbol);
+  const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!response.ok) return null;
+
+  const payload = await response.json();
+  if (!Array.isArray(payload)) return null;
+
+  const bySymbol = new Map(payload.map((row) => [row.symbol, row]));
+  const items = requested
+    .map(({ id, symbol }) => {
+      const row = bySymbol.get(symbol);
+      if (!row) return null;
+      return {
+        id,
+        price: safeNumber(row.lastPrice),
+        change24h: safeNumber(row.priceChangePercent),
+      };
+    })
+    .filter((item) => item && item.price > 0);
+
+  if (items.length === 0) return null;
+  if (endpoint === 'markets') {
+    return items.map((item) => ({
+      id: item.id,
+      current_price: item.price,
+      price_change_percentage_24h: item.change24h,
+      sparkline_in_7d: { price: [] },
+    }));
+  }
+  return buildSimplePriceResponse(items, include24hrChange);
+}
+
+async function fetchFromCoinCap(ids, endpoint, include24hrChange) {
+  if (ids.length === 0) return null;
+  const url = `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(ids.join(','))}`;
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!response.ok) return null;
+
+  const payload = await response.json();
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const items = rows
+    .map((row) => ({
+      id: row.id,
+      price: safeNumber(row.priceUsd),
+      change24h: safeNumber(row.changePercent24Hr),
+    }))
+    .filter((item) => item.id && item.price > 0);
+
+  if (items.length === 0) return null;
+  if (endpoint === 'markets') {
+    return items.map((item) => ({
+      id: item.id,
+      current_price: item.price,
+      price_change_percentage_24h: item.change24h,
+      sparkline_in_7d: { price: [] },
+    }));
+  }
+  return buildSimplePriceResponse(items, include24hrChange);
+}
+
+async function fetchAlternativeData(idsParam, endpoint, vsCurrencies, include24hrChange) {
+  if (vsCurrencies !== 'usd') return null;
+  const ids = parseIds(idsParam);
+  if (ids.length === 0) return null;
+
+  try {
+    const binanceData = await fetchFromBinance(ids, endpoint, include24hrChange);
+    if (binanceData) return { source: 'BINANCE', body: JSON.stringify(binanceData) };
+  } catch {}
+
+  try {
+    const coinCapData = await fetchFromCoinCap(ids, endpoint, include24hrChange);
+    if (coinCapData) return { source: 'COINCAP', body: JSON.stringify(coinCapData) };
+  } catch {}
+
+  return null;
+}
 
 function validateCoinIds(idsParam) {
   if (!idsParam) return 'bitcoin,ethereum,solana';
@@ -106,7 +219,6 @@ export default async function handler(req) {
       },
     });
 
-    // If rate limited, return cached data if available
     if (
       response.status === 429 &&
       isValidPayload(fallbackCache.payload) &&
@@ -117,6 +229,20 @@ export default async function handler(req) {
         status: fallbackCache.payload.status,
         headers: getHeaders(cors, 'STALE'),
       });
+    }
+
+    if (!response.ok) {
+      const alternative = await fetchAlternativeData(ids, endpoint, vsCurrencies, include24hrChange);
+      if (alternative) {
+        const altPayload = { body: alternative.body, status: 200 };
+        fallbackCache = { key: cacheKey, payload: altPayload, timestamp: Date.now() };
+        void setCachedJson(redisKey, altPayload, CACHE_TTL_SECONDS);
+        recordCacheTelemetry('/api/coingecko', `ALT-${alternative.source}`);
+        return new Response(alternative.body, {
+          status: 200,
+          headers: getHeaders(cors, `ALT-${alternative.source}`),
+        });
+      }
     }
 
     const data = await response.text();
@@ -136,6 +262,18 @@ export default async function handler(req) {
       headers: getHeaders(cors, 'MISS'),
     });
   } catch (error) {
+    const alternative = await fetchAlternativeData(ids, endpoint, vsCurrencies, include24hrChange);
+    if (alternative) {
+      const altPayload = { body: alternative.body, status: 200 };
+      fallbackCache = { key: cacheKey, payload: altPayload, timestamp: Date.now() };
+      void setCachedJson(redisKey, altPayload, CACHE_TTL_SECONDS);
+      recordCacheTelemetry('/api/coingecko', `ALT-${alternative.source}`);
+      return new Response(alternative.body, {
+        status: 200,
+        headers: getHeaders(cors, `ALT-${alternative.source}`),
+      });
+    }
+
     // Return cached data on error if available
     if (isValidPayload(fallbackCache.payload) && fallbackCache.key === cacheKey) {
       recordCacheTelemetry('/api/coingecko', 'ERROR-FALLBACK');
