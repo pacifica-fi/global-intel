@@ -56,7 +56,6 @@ import {
   StatusPanel,
   EconomicPanel,
   SearchModal,
-  MobileWarningModal,
   PizzIntIndicator,
   GdeltIntelPanel,
   LiveNewsPanel,
@@ -134,7 +133,6 @@ export class App {
   private exportPanel: ExportPanel | null = null;
   private languageSelector: LanguageSelector | null = null;
   private searchModal: SearchModal | null = null;
-  private mobileWarningModal: MobileWarningModal | null = null;
   private pizzintIndicator: PizzIntIndicator | null = null;
   private latestPredictions: PredictionMarket[] = [];
   private latestMarkets: MarketData[] = [];
@@ -523,10 +521,7 @@ export class App {
   }
 
   private setupMobileWarning(): void {
-    if (MobileWarningModal.shouldShow()) {
-      this.mobileWarningModal = new MobileWarningModal();
-      this.mobileWarningModal.show();
-    }
+    return;
   }
 
   private setupStatusPanel(): void {
