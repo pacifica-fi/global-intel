@@ -1,6 +1,5 @@
 import type { PanelConfig, MapLayers } from '@/types';
 import type { DataSourceId } from '@/services/data-freshness';
-import { SITE_VARIANT } from './variant';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -32,6 +31,19 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   economic: { name: 'Economic Indicators', enabled: true, priority: 1 },
   'pentagon-pizza': { name: 'Pentagon Pizza Index', enabled: true, priority: 2 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
+  'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
+  forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
+  bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
+  'commodities-news': { name: 'Commodities News', enabled: true, priority: 2 },
+  centralbanks: { name: 'Central Bank Watch', enabled: true, priority: 1 },
+  'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
+  derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
+  fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
+  regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
+  institutional: { name: 'Hedge Funds & PE', enabled: true, priority: 2 },
+  analysis: { name: 'Market Analysis', enabled: true, priority: 2 },
+  'gcc-investments': { name: 'GCC Investments', enabled: true, priority: 2 },
+  gccNews: { name: 'GCC Business News', enabled: true, priority: 2 },
   finance: { name: 'Financial', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 2 },
   ai: { name: 'AI/ML', enabled: true, priority: 2 },
@@ -357,13 +369,19 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   commodityHubs: false,
   gulfInvestments: false,
 };
+void TECH_PANELS;
+void TECH_MAP_LAYERS;
+void TECH_MOBILE_MAP_LAYERS;
+void FINANCE_PANELS;
+void FINANCE_MAP_LAYERS;
+void FINANCE_MOBILE_MAP_LAYERS;
 
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'tech' ? TECH_PANELS : SITE_VARIANT === 'finance' ? FINANCE_PANELS : FULL_PANELS;
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MAP_LAYERS : FULL_MAP_LAYERS;
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_MAP_LAYERS : SITE_VARIANT === 'finance' ? FINANCE_MOBILE_MAP_LAYERS : FULL_MOBILE_MAP_LAYERS;
+export const DEFAULT_PANELS = FULL_PANELS;
+export const DEFAULT_MAP_LAYERS = FULL_MAP_LAYERS;
+export const MOBILE_DEFAULT_MAP_LAYERS = FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
@@ -406,7 +424,34 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'pentagon-pizza', 'gulf-economies', 'etf-flows', 'stablecoins', 'heatmap'],
+    panelKeys: [
+      'commodities',
+      'commodities-news',
+      'markets',
+      'markets-news',
+      'forex',
+      'bonds',
+      'economic',
+      'economic-news',
+      'centralbanks',
+      'derivatives',
+      'fintech',
+      'regulation',
+      'institutional',
+      'analysis',
+      'trade-policy',
+      'supply-chain',
+      'finance',
+      'polymarket',
+      'macro-signals',
+      'pentagon-pizza',
+      'gulf-economies',
+      'gcc-investments',
+      'gccNews',
+      'etf-flows',
+      'stablecoins',
+      'heatmap',
+    ],
     variants: ['full'],
   },
   topical: {

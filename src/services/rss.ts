@@ -1,5 +1,4 @@
 import type { Feed, NewsItem } from '@/types';
-import { SITE_VARIANT } from '@/config';
 import { chunkArray, fetchWithProxy } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
@@ -17,10 +16,9 @@ const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const AI_CLASSIFY_DEDUP_MS = 30 * 60 * 1000;
 const AI_CLASSIFY_WINDOW_MS = 60 * 1000;
-const AI_CLASSIFY_MAX_PER_WINDOW =
-  SITE_VARIANT === 'finance' ? 40 : SITE_VARIANT === 'tech' ? 60 : 80;
-const AI_CLASSIFY_MAX_PER_FEED =
-  SITE_VARIANT === 'finance' ? 2 : SITE_VARIANT === 'tech' ? 2 : 3;
+const AI_CLASSIFY_MAX_PER_WINDOW = 80;
+const AI_CLASSIFY_MAX_PER_FEED = 3;
+const THREAT_CONTEXT = 'full';
 const aiRecentlyQueued = new Map<string, number>();
 const aiDispatches: number[] = [];
 
@@ -218,7 +216,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           : (item.querySelector('pubDate')?.textContent || '');
         const parsedDate = pubDateStr ? new Date(pubDateStr) : new Date();
         const pubDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-        const threat = classifyByKeyword(title, SITE_VARIANT);
+        const threat = classifyByKeyword(title, THREAT_CONTEXT);
         const isAlert = threat.level === 'critical' || threat.level === 'high';
         const geoMatches = inferGeoHubsFromTitle(title);
         const topGeo = geoMatches[0];
@@ -252,7 +250,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     for (const item of aiCandidates) {
       if (!canQueueAiClassification(item.title)) continue;
-      classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
+      classifyWithAI(item.title, THREAT_CONTEXT).then((aiResult) => {
         if (aiResult && aiResult.confidence > item.threat.confidence) {
           item.threat = aiResult;
           item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';

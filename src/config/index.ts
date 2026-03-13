@@ -1,12 +1,8 @@
 // Configuration exports
-// For variant-specific builds, set VITE_VARIANT environment variable
-// VITE_VARIANT=tech → app.pacifica.fi (tech-focused)
-// VITE_VARIANT=full → app.pacifica.fi (geopolitical)
-// VITE_VARIANT=finance → app.pacifica.fi (markets/trading)
 
 export { SITE_VARIANT } from './variant';
 
-// Shared base configuration (always included)
+// Base configuration
 export {
   API_URLS,
   REFRESH_INTERVALS,
@@ -14,16 +10,16 @@ export {
   STORAGE_KEYS,
 } from './variants/base';
 
-// Market data (shared)
+// Market data
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
 
-// Geo data (shared base)
+// Geo data
 export { UNDERSEA_CABLES, MAP_URLS } from './geo';
 
-// AI Datacenters (shared)
+// AI Datacenters
 export { AI_DATA_CENTERS } from './ai-datacenters';
 
-// Feeds configuration (shared functions, variant-specific data)
+// Feeds configuration
 export {
   SOURCE_TIERS,
   getSourceTier,
@@ -36,20 +32,13 @@ export {
   type SourceType,
 } from './feeds';
 
-// Panel configuration - imported from panels.ts
+// Panel configuration
 export {
   DEFAULT_PANELS,
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
 } from './panels';
 
-// ============================================
-// VARIANT-SPECIFIC EXPORTS
-// Only import what's needed for each variant
-// ============================================
-
-// Full variant (geopolitical) - only included in full builds
-// These are large data files that should be tree-shaken in tech builds
 export {
   FEEDS,
   INTEL_SOURCES,
@@ -79,7 +68,6 @@ export {
   type EntityEntry,
 } from './entities';
 
-// Tech variant - these are included in tech builds
 export { TECH_COMPANIES } from './tech-companies';
 export { AI_RESEARCH_LABS } from './ai-research-labs';
 export { STARTUP_ECOSYSTEMS } from './startup-ecosystems';
@@ -101,7 +89,6 @@ export {
   type CloudRegion,
 } from './tech-geo';
 
-// Finance variant - these are included in finance builds
 export {
   STOCK_EXCHANGES,
   FINANCIAL_CENTERS,
@@ -113,5 +100,4 @@ export {
   type CommodityHub,
 } from './finance-geo';
 
-// Gulf FDI investment database
 export { GULF_INVESTMENTS } from './gulf-fdi';

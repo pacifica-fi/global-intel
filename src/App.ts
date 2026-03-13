@@ -1289,36 +1289,33 @@ export class App {
       })));
     }
 
-    if (SITE_VARIANT === 'finance') {
-      // Finance variant: market-specific sources
-      this.searchModal.registerSource('exchange', STOCK_EXCHANGES.map(e => ({
-        id: e.id,
-        title: `${e.shortName} - ${e.name}`,
-        subtitle: `${e.tier} • ${e.city}, ${e.country}${e.marketCap ? ` • $${e.marketCap}T` : ''}`,
-        data: e,
-      })));
+    this.searchModal.registerSource('exchange', STOCK_EXCHANGES.map(e => ({
+      id: e.id,
+      title: `${e.shortName} - ${e.name}`,
+      subtitle: `${e.tier} • ${e.city}, ${e.country}${e.marketCap ? ` • $${e.marketCap}T` : ''}`,
+      data: e,
+    })));
 
-      this.searchModal.registerSource('financialcenter', FINANCIAL_CENTERS.map(f => ({
-        id: f.id,
-        title: f.name,
-        subtitle: `${f.type} financial center${f.gfciRank ? ` • GFCI #${f.gfciRank}` : ''}${f.specialties ? ` • ${f.specialties.slice(0, 3).join(', ')}` : ''}`,
-        data: f,
-      })));
+    this.searchModal.registerSource('financialcenter', FINANCIAL_CENTERS.map(f => ({
+      id: f.id,
+      title: f.name,
+      subtitle: `${f.type} financial center${f.gfciRank ? ` • GFCI #${f.gfciRank}` : ''}${f.specialties ? ` • ${f.specialties.slice(0, 3).join(', ')}` : ''}`,
+      data: f,
+    })));
 
-      this.searchModal.registerSource('centralbank', CENTRAL_BANKS.map(b => ({
-        id: b.id,
-        title: `${b.shortName} - ${b.name}`,
-        subtitle: `${b.type}${b.currency ? ` • ${b.currency}` : ''} • ${b.city}, ${b.country}`,
-        data: b,
-      })));
+    this.searchModal.registerSource('centralbank', CENTRAL_BANKS.map(b => ({
+      id: b.id,
+      title: `${b.shortName} - ${b.name}`,
+      subtitle: `${b.type}${b.currency ? ` • ${b.currency}` : ''} • ${b.city}, ${b.country}`,
+      data: b,
+    })));
 
-      this.searchModal.registerSource('commodityhub', COMMODITY_HUBS.map(h => ({
-        id: h.id,
-        title: h.name,
-        subtitle: `${h.type} • ${h.city}, ${h.country}${h.commodities ? ` • ${h.commodities.slice(0, 3).join(', ')}` : ''}`,
-        data: h,
-      })));
-    }
+    this.searchModal.registerSource('commodityhub', COMMODITY_HUBS.map(h => ({
+      id: h.id,
+      title: h.name,
+      subtitle: `${h.type} • ${h.city}, ${h.country}${h.commodities ? ` • ${h.commodities.slice(0, 3).join(', ')}` : ''}`,
+      data: h,
+    })));
 
     // Register countries for all variants
     this.searchModal.registerSource('country', this.buildCountrySearchItems());
@@ -1692,7 +1689,7 @@ export class App {
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : t('panels.map')}</span>
+              <span class="panel-title">${t('panels.map')}</span>
             </div>
             <span class="header-clock" id="headerClock"></span>
             <button class="map-pin-btn" id="mapPinBtn" title="${t('header.pinMap')}">
@@ -2064,54 +2061,47 @@ export class App {
       this.panels[panelKey] = panel;
     }
 
-    // Geopolitical-only panels (not needed for tech variant)
-    if (SITE_VARIANT === 'full') {
-      const gdeltIntelPanel = new GdeltIntelPanel();
-      this.panels['gdelt-intel'] = gdeltIntelPanel;
+    const gdeltIntelPanel = new GdeltIntelPanel();
+    this.panels['gdelt-intel'] = gdeltIntelPanel;
 
-      const ciiPanel = new CIIPanel();
-      ciiPanel.setShareStoryHandler((code, name) => {
-        this.openCountryStory(code, name);
-      });
-      this.panels['cii'] = ciiPanel;
+    const ciiPanel = new CIIPanel();
+    ciiPanel.setShareStoryHandler((code, name) => {
+      this.openCountryStory(code, name);
+    });
+    this.panels['cii'] = ciiPanel;
 
-      const cascadePanel = new CascadePanel();
-      this.panels['cascade'] = cascadePanel;
+    const cascadePanel = new CascadePanel();
+    this.panels['cascade'] = cascadePanel;
 
-      const strategicRiskPanel = new StrategicRiskPanel();
-      strategicRiskPanel.setLocationClickHandler((lat, lon) => {
-        this.map?.setCenter(lat, lon, 4);
-      });
-      this.panels['strategic-risk'] = strategicRiskPanel;
+    const strategicRiskPanel = new StrategicRiskPanel();
+    strategicRiskPanel.setLocationClickHandler((lat, lon) => {
+      this.map?.setCenter(lat, lon, 4);
+    });
+    this.panels['strategic-risk'] = strategicRiskPanel;
 
-      const strategicPosturePanel = new StrategicPosturePanel();
-      strategicPosturePanel.setLocationClickHandler((lat, lon) => {
-        console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.map });
-        this.map?.setCenter(lat, lon, 4);
-      });
-      this.panels['strategic-posture'] = strategicPosturePanel;
+    const strategicPosturePanel = new StrategicPosturePanel();
+    strategicPosturePanel.setLocationClickHandler((lat, lon) => {
+      console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.map });
+      this.map?.setCenter(lat, lon, 4);
+    });
+    this.panels['strategic-posture'] = strategicPosturePanel;
 
-      const displacementPanel = new DisplacementPanel();
-      displacementPanel.setCountryClickHandler((lat, lon) => {
-        this.map?.setCenter(lat, lon, 4);
-      });
-      this.panels['displacement'] = displacementPanel;
+    const displacementPanel = new DisplacementPanel();
+    displacementPanel.setCountryClickHandler((lat, lon) => {
+      this.map?.setCenter(lat, lon, 4);
+    });
+    this.panels['displacement'] = displacementPanel;
 
-      const climatePanel = new ClimateAnomalyPanel();
-      climatePanel.setZoneClickHandler((lat, lon) => {
-        this.map?.setCenter(lat, lon, 4);
-      });
-      this.panels['climate'] = climatePanel;
+    const climatePanel = new ClimateAnomalyPanel();
+    climatePanel.setZoneClickHandler((lat, lon) => {
+      this.map?.setCenter(lat, lon, 4);
+    });
+    this.panels['climate'] = climatePanel;
 
-    }
-
-    // GCC Investments Panel (finance variant)
-    if (SITE_VARIANT === 'finance') {
-      const investmentsPanel = new InvestmentsPanel((inv) => {
-        focusInvestmentOnMap(this.map, this.mapLayers, inv.lat, inv.lon);
-      });
-      this.panels['gcc-investments'] = investmentsPanel;
-    }
+    const investmentsPanel = new InvestmentsPanel((inv) => {
+      focusInvestmentOnMap(this.map, this.mapLayers, inv.lat, inv.lon);
+    });
+    this.panels['gcc-investments'] = investmentsPanel;
 
     const liveNewsPanel = new LiveNewsPanel();
     this.panels['live-news'] = liveNewsPanel;
@@ -2392,17 +2382,6 @@ export class App {
 
     // Sources modal
     this.setupSourcesModal();
-
-    this.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
-      link.addEventListener('click', (e) => {
-        const variant = link.dataset.variant;
-        if (variant && variant !== SITE_VARIANT) {
-          e.preventDefault();
-          localStorage.setItem('worldmonitor-variant', variant);
-          window.location.reload();
-        }
-      });
-    });
 
     // Fullscreen toggle
     const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -2829,28 +2808,21 @@ export class App {
       { name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) },
     ];
 
-    // Load intelligence signals for CII calculation (protests, military, outages)
-    // Only for geopolitical variant - tech variant doesn't need CII/focal points
-    if (SITE_VARIANT === 'full') {
-      tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
-    }
+    tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
 
     // Conditionally load non-intelligence layers
     // NOTE: outages, protests, military are handled by loadIntelligenceSignals() above
     // They update the map when layers are enabled, so no duplicate tasks needed here
-    if (SITE_VARIANT === 'full') tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+    tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
     if (this.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (this.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (this.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
     if (this.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
     if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
     if (CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (this.mapLayers.techEvents || SITE_VARIANT === 'tech') tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
+    if (this.mapLayers.techEvents) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
 
-    // Tech Readiness panel (tech variant only)
-    if (SITE_VARIANT === 'tech') {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
-    }
+    tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
 
     // Use allSettled to ensure all tasks complete and search index always updates
     const results = await Promise.allSettled(tasks.map(t => t.task));
@@ -3132,7 +3104,7 @@ export class App {
       .map(([key, feeds]) => ({ key, feeds }));
 
     // Stage category fetches to avoid startup bursts and API pressure in all variants.
-    const maxCategoryConcurrency = SITE_VARIANT === 'finance' ? 3 : SITE_VARIANT === 'tech' ? 4 : 5;
+    const maxCategoryConcurrency = 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
     for (let i = 0; i < categories.length; i += categoryConcurrency) {
@@ -3153,33 +3125,30 @@ export class App {
       }
     });
 
-    // Intel (uses different source) - full variant only (defense/military news)
-    if (SITE_VARIANT === 'full') {
-      const enabledIntelSources = INTEL_SOURCES.filter(f => !this.disabledSources.has(f.name));
-      const intelPanel = this.newsPanels['intel'];
-      if (enabledIntelSources.length === 0) {
-        delete this.newsByCategory['intel'];
-        if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
-        this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
-      } else {
-        const intelResult = await Promise.allSettled([fetchCategoryFeeds(enabledIntelSources)]);
-        if (intelResult[0]?.status === 'fulfilled') {
-          const intel = intelResult[0].value;
-          this.renderNewsForCategory('intel', intel);
-          if (intelPanel) {
-            try {
-              const baseline = await updateBaseline('news:intel', intel.length);
-              const deviation = calculateDeviation(intel.length, baseline);
-              intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-            } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-          }
-          this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-          collectedNews.push(...intel);
-          this.flashMapForNews(intel);
-        } else {
-          delete this.newsByCategory['intel'];
-          console.error('[App] Intel feed failed:', intelResult[0]?.reason);
+    const enabledIntelSources = INTEL_SOURCES.filter(f => !this.disabledSources.has(f.name));
+    const intelPanel = this.newsPanels['intel'];
+    if (enabledIntelSources.length === 0) {
+      delete this.newsByCategory['intel'];
+      if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
+      this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
+    } else {
+      const intelResult = await Promise.allSettled([fetchCategoryFeeds(enabledIntelSources)]);
+      if (intelResult[0]?.status === 'fulfilled') {
+        const intel = intelResult[0].value;
+        this.renderNewsForCategory('intel', intel);
+        if (intelPanel) {
+          try {
+            const baseline = await updateBaseline('news:intel', intel.length);
+            const deviation = calculateDeviation(intel.length, baseline);
+            intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+          } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
         }
+        this.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+        collectedNews.push(...intel);
+        this.flashMapForNews(intel);
+      } else {
+        delete this.newsByCategory['intel'];
+        console.error('[App] Intel feed failed:', intelResult[0]?.reason);
       }
     }
 
@@ -3356,8 +3325,7 @@ export class App {
 
   private async loadTechEvents(): Promise<void> {
     console.log('[loadTechEvents] Called. SITE_VARIANT:', SITE_VARIANT, 'techEvents layer:', this.mapLayers.techEvents);
-    // Only load for tech variant or if techEvents layer is enabled
-    if (SITE_VARIANT !== 'tech' && !this.mapLayers.techEvents) {
+    if (!this.mapLayers.techEvents) {
       console.log('[loadTechEvents] Skipping - not tech variant and layer disabled');
       return;
     }
@@ -3396,8 +3364,7 @@ export class App {
       this.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
-      // Register tech events as searchable source
-      if (SITE_VARIANT === 'tech' && this.searchModal) {
+      if (this.searchModal) {
         this.searchModal.registerSource('techevent', mapEvents.map((e: { id: string; title: string; location: string; startDate: string }) => ({
           id: e.id,
           title: e.title,
@@ -4217,14 +4184,10 @@ export class App {
     this.scheduleRefresh('oil', () => this.loadOilAnalytics(), 30 * 60 * 1000);
     this.scheduleRefresh('spending', () => this.loadGovernmentSpending(), 60 * 60 * 1000);
 
-    // Refresh intelligence signals for CII (geopolitical variant only)
-    // This handles outages, protests, military - updates map when layers enabled
-    if (SITE_VARIANT === 'full') {
-      this.scheduleRefresh('intelligence', () => {
-        this.intelligenceCache = {}; // Clear cache to force fresh fetch
-        return this.loadIntelligenceSignals();
-      }, 5 * 60 * 1000);
-    }
+    this.scheduleRefresh('intelligence', () => {
+      this.intelligenceCache = {};
+      return this.loadIntelligenceSignals();
+    }, 5 * 60 * 1000);
 
     // Non-intelligence layer refreshes only
     // NOTE: outages, protests, military are refreshed by intelligence schedule above

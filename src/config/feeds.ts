@@ -1,5 +1,4 @@
 import type { Feed } from '@/types';
-import { SITE_VARIANT } from './variant';
 
 // Helper to create RSS proxy URL (Vercel)
 const rss = (url: string) => `/api/rss-proxy?url=${encodeURIComponent(url)}`;
@@ -794,6 +793,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'Startup Podcasts', url: rss('https://news.google.com/rss/search?q=("Masters+of+Scale"+OR+"The+Pitch+podcast"+OR+"startup+podcast")+episode+when:14d&hl=en-US&gl=US&ceid=US:en') },
   ],
 };
+void TECH_FEEDS;
 
 // Finance/Trading variant feeds (all free RSS / Google News proxies)
 const FINANCE_FEEDS: Record<string, Feed[]> = {
@@ -883,8 +883,25 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
-// Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech' ? TECH_FEEDS : SITE_VARIANT === 'finance' ? FINANCE_FEEDS : FULL_FEEDS;
+const FULL_TRADING_FEEDS: Record<string, Feed[]> = {
+  'markets-news': FINANCE_FEEDS.markets!,
+  forex: FINANCE_FEEDS.forex!,
+  bonds: FINANCE_FEEDS.bonds!,
+  'commodities-news': FINANCE_FEEDS.commodities!,
+  centralbanks: FINANCE_FEEDS.centralbanks!,
+  'economic-news': FINANCE_FEEDS.economic!,
+  derivatives: FINANCE_FEEDS.derivatives!,
+  fintech: FINANCE_FEEDS.fintech!,
+  regulation: FINANCE_FEEDS.regulation!,
+  institutional: FINANCE_FEEDS.institutional!,
+  analysis: FINANCE_FEEDS.analysis!,
+  gccNews: FINANCE_FEEDS.gccNews!,
+};
+
+export const FEEDS: Record<string, Feed[]> = {
+  ...FULL_FEEDS,
+  ...FULL_TRADING_FEEDS,
+};
 
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
