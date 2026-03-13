@@ -2,6 +2,8 @@
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
+We are committed to building a pure web monitor experience that runs directly in the browser, without desktop app installation, so it does not add extra burden to your computer.
+
 [![GitHub stars](https://img.shields.io/github/stars/pacifica-fi/global-intel?style=social)](https://github.com/pacifica-fi/global-intel/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/pacifica-fi/global-intel?style=social)](https://github.com/pacifica-fi/global-intel/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
