@@ -37,7 +37,6 @@ import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { CountryBriefPage } from '@/components/CountryBriefPage';
-import { maybeShowDownloadBanner } from '@/components/DownloadBanner';
 import { CountryTimeline, type TimelineEvent } from '@/components/CountryTimeline';
 import { escapeHtml } from '@/utils/sanitize';
 import type { ParsedMapUrlState } from '@/utils';
@@ -70,7 +69,6 @@ import {
   IntelligenceGapBadge,
   TechEventsPanel,
   ServiceStatusPanel,
-  RuntimeConfigPanel,
   InsightsPanel,
   TechReadinessPanel,
   MacroSignalsPanel,
@@ -96,9 +94,7 @@ import { AI_RESEARCH_LABS } from '@/config/ai-research-labs';
 import { STARTUP_ECOSYSTEMS } from '@/config/startup-ecosystems';
 import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
-import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
-import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
 
@@ -108,11 +104,6 @@ type IntlDisplayNamesCtor = new (
   locales: string | string[],
   options: { type: 'region' }
 ) => { of: (code: string) => string | undefined };
-
-interface DesktopRuntimeInfo {
-  os: string;
-  arch: string;
-}
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 
@@ -180,8 +171,6 @@ export class App {
   private findingsBadge: IntelligenceGapBadge | null = null;
   private pendingDeepLinkCountry: string | null = null;
   private briefRequestToken = 0;
-  private readonly isDesktopApp = isDesktopRuntime();
-
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
     if (!el) throw new Error(`Container ${containerId} not found`);
@@ -214,7 +203,7 @@ export class App {
       );
       let panelSettingsChanged = false;
       for (const key of Object.keys(this.panelSettings)) {
-        if (key !== 'runtime-config' && !(key in DEFAULT_PANELS)) {
+        if (!(key in DEFAULT_PANELS)) {
           delete this.panelSettings[key];
           panelSettingsChanged = true;
         }
@@ -328,19 +317,6 @@ export class App {
         }
       }
     }
-
-    // Desktop key management panel must always remain accessible in Tauri.
-    if (this.isDesktopApp) {
-      const runtimePanel = this.panelSettings['runtime-config'] ?? {
-        name: 'Desktop Configuration',
-        enabled: true,
-        priority: 2,
-      };
-      runtimePanel.enabled = true;
-      this.panelSettings['runtime-config'] = runtimePanel;
-      saveToStorage(STORAGE_KEYS.panels, this.panelSettings);
-    }
-
     this.initialUrlState = parseMapUrlState(window.location.search, this.mapLayers);
     if (this.initialUrlState.layers) {
       // For tech variant, filter out geopolitical layers from URL
@@ -429,9 +405,7 @@ export class App {
     // Handle deep links for story sharing
     this.handleDeepLinks();
 
-    if (this.isDesktopApp) {
-      setTimeout(() => this.checkForUpdate(), 5000);
-    }
+    setTimeout(() => this.checkForUpdate(), 5000);
   }
 
   private handleDeepLinks(): void {
@@ -515,47 +489,13 @@ export class App {
     return false;
   }
 
-  private mapDesktopDownloadPlatform(os: string, arch: string): string | null {
-    const normalizedOs = os.toLowerCase();
-    const normalizedArch = arch.toLowerCase()
-      .replace('amd64', 'x86_64')
-      .replace('x64', 'x86_64')
-      .replace('arm64', 'aarch64');
-
-    if (normalizedOs === 'windows') {
-      return normalizedArch === 'x86_64' ? 'windows-exe' : null;
-    }
-
-    if (normalizedOs === 'macos' || normalizedOs === 'darwin') {
-      if (normalizedArch === 'aarch64') return 'macos-arm64';
-      if (normalizedArch === 'x86_64') return 'macos-x64';
-      return null;
-    }
-
-    return null;
-  }
-
-  private async resolveUpdateDownloadUrl(releaseUrl: string): Promise<string> {
-    try {
-      const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
-      const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
-      if (platform) {
-        return `https://worldmonitor.app/api/download?platform=${platform}`;
-      }
-    } catch {
-      // Silent fallback to release page when desktop runtime info is unavailable.
-    }
-    return releaseUrl;
-  }
-
   private async showUpdateBadge(version: string, releaseUrl: string): Promise<void> {
     const versionSpan = this.container.querySelector('.version');
     if (!versionSpan) return;
-    const href = await this.resolveUpdateDownloadUrl(releaseUrl);
 
     const badge = document.createElement('a');
     badge.className = 'update-badge';
-    badge.href = href;
+    badge.href = releaseUrl;
     badge.target = '_blank';
     badge.rel = 'noopener';
     badge.textContent = `UPDATE v${version}`;
@@ -2199,11 +2139,6 @@ export class App {
     const serviceStatusPanel = new ServiceStatusPanel();
     this.panels['service-status'] = serviceStatusPanel;
 
-    if (this.isDesktopApp) {
-      const runtimeConfigPanel = new RuntimeConfigPanel({ mode: 'alert' });
-      this.panels['runtime-config'] = runtimeConfigPanel;
-    }
-
     // Tech Readiness Panel (tech variant only - World Bank tech indicators)
     const techReadinessPanel = new TechReadinessPanel();
     this.panels['tech-readiness'] = techReadinessPanel;
@@ -2252,17 +2187,6 @@ export class App {
       panelOrder.splice(webcamsIdx, 1);
       const afterNews = panelOrder.indexOf('live-news') + 1;
       panelOrder.splice(afterNews, 0, 'live-webcams');
-    }
-
-    // Desktop configuration should stay easy to reach in Tauri builds.
-    if (this.isDesktopApp) {
-      const runtimeIdx = panelOrder.indexOf('runtime-config');
-      if (runtimeIdx > 1) {
-        panelOrder.splice(runtimeIdx, 1);
-        panelOrder.splice(1, 0, 'runtime-config');
-      } else if (runtimeIdx === -1) {
-        panelOrder.splice(1, 0, 'runtime-config');
-      }
     }
 
     panelOrder.forEach((key: string) => {
@@ -2482,23 +2406,20 @@ export class App {
     // Sources modal
     this.setupSourcesModal();
 
-    // Variant switcher: switch variant locally on desktop (reload with new config)
-    if (this.isDesktopApp) {
-      this.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
-        link.addEventListener('click', (e) => {
-          const variant = link.dataset.variant;
-          if (variant && variant !== SITE_VARIANT) {
-            e.preventDefault();
-            localStorage.setItem('worldmonitor-variant', variant);
-            window.location.reload();
-          }
-        });
+    this.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
+      link.addEventListener('click', (e) => {
+        const variant = link.dataset.variant;
+        if (variant && variant !== SITE_VARIANT) {
+          e.preventDefault();
+          localStorage.setItem('worldmonitor-variant', variant);
+          window.location.reload();
+        }
       });
-    }
+    });
 
     // Fullscreen toggle
     const fullscreenBtn = document.getElementById('fullscreenBtn');
-    if (!this.isDesktopApp && fullscreenBtn) {
+    if (fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
       this.boundFullscreenHandler = () => {
         fullscreenBtn.textContent = document.fullscreenElement ? '⛶' : '⛶';
@@ -2730,7 +2651,6 @@ export class App {
   private renderPanelToggles(): void {
     const container = document.getElementById('panelToggles')!;
     const panelHtml = Object.entries(this.panelSettings)
-      .filter(([key]) => key !== 'runtime-config' || this.isDesktopApp)
       .map(
         ([key, panel]) => `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${key}">
@@ -2781,9 +2701,6 @@ export class App {
   }
 
   private getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
     const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
     const lookup = `panels.${key}`;
     const localized = t(lookup);
@@ -3281,7 +3198,6 @@ export class App {
 
     this.allNews = collectedNews;
     this.initialLoadComplete = true;
-    maybeShowDownloadBanner();
     // Temporal baseline: report news volume
     updateAndCheck([
       { type: 'news', region: 'global', count: collectedNews.length },

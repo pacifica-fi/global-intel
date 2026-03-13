@@ -11,7 +11,6 @@ window.addEventListener('unhandledrejection', (e) => {
 import { debugInjectTestEvents, debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch } from '@/services/runtime';
-import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
@@ -24,9 +23,7 @@ inject();
 // Initialize dynamic meta tags for sharing
 initMetaTags();
 
-// In desktop mode, route /api/* calls to the local Tauri sidecar backend.
 installRuntimeFetchPatch();
-void loadDesktopSecrets();
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
@@ -66,20 +63,18 @@ Object.defineProperty(window, 'beta', {
   },
 });
 
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window)) {
-  import('virtual:pwa-register').then(({ registerSW }) => {
-    registerSW({
-      onRegisteredSW(_swUrl, registration) {
-        if (registration) {
-          setInterval(async () => {
-            if (!navigator.onLine) return;
-            try { await registration.update(); } catch {}
-          }, 60 * 60 * 1000);
-        }
-      },
-      onOfflineReady() {
-        console.log('[PWA] App ready for offline use');
-      },
-    });
+import('virtual:pwa-register').then(({ registerSW }) => {
+  registerSW({
+    onRegisteredSW(_swUrl, registration) {
+      if (registration) {
+        setInterval(async () => {
+          if (!navigator.onLine) return;
+          try { await registration.update(); } catch {}
+        }, 60 * 60 * 1000);
+      }
+    },
+    onOfflineReady() {
+      console.log('[PWA] App ready for offline use');
+    },
   });
-}
+});
