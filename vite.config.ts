@@ -1,5 +1,4 @@
 import { defineConfig, type Plugin } from 'vite';
-import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 import pkg from './package.json';
 
@@ -115,110 +114,6 @@ export default defineConfig({
   plugins: [
     htmlVariantPlugin(),
     youtubeLivePlugin(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: false,
-
-      includeAssets: [
-        'favico/favicon.ico',
-        'favico/apple-touch-icon.png',
-        'favico/favicon-32x32.png',
-      ],
-
-      manifest: {
-        name: `${activeMeta.siteName} - ${activeMeta.subject}`,
-        short_name: activeMeta.shortName,
-        description: activeMeta.description,
-        start_url: '/',
-        scope: '/',
-        display: 'standalone',
-        orientation: 'any',
-        theme_color: '#0a0f0a',
-        background_color: '#0a0f0a',
-        categories: activeMeta.categories,
-        icons: [
-          { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: ['**/ml-*.js', '**/onnx*.wasm'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-        skipWaiting: true,
-        clientsClaim: true,
-        cleanupOutdatedCaches: true,
-
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'html-navigation',
-              networkTimeoutSeconds: 3,
-            },
-          },
-          {
-            urlPattern: /^https?:\/\/.*\/api\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https?:\/\/.*\/rss\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/api\.maptiler\.com\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'map-tiles',
-              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/[abc]\.basemaps\.cartocdn\.com\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'carto-tiles',
-              expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'google-fonts-css',
-              expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-woff',
-              expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'images',
-              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
-            },
-          },
-        ],
-      },
-
-      devOptions: {
-        enabled: false,
-      },
-    }),
   ],
   resolve: {
     alias: {
