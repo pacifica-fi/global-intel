@@ -104,6 +104,7 @@
     "macroSignals": "市场雷达",
     "etfFlows": "BTC ETF追踪",
     "stablecoins": "稳定币",
+    "cryptoChannels": "币圈通道",
     "ucdpEvents": "UCDP冲突事件",
     "displacement": "UNHCR流离失所",
     "climate": "气候异常",
@@ -434,6 +435,17 @@
       "mcap": "市值",
       "vol24h": "24小时交易量",
       "chg24h": "24小时变化"
+    },
+    "cryptoChannels": {
+      "trackedMcap": "跟踪市值",
+      "breadth": "24小时涨跌家数",
+      "avgMove": "24小时平均涨跌",
+      "leaderVolume": "成交量龙头",
+      "volumeChannel": "24小时成交量柱状图",
+      "mcapChannel": "市值结构饼图",
+      "shares": "占比",
+      "stableShare": "稳定币占比",
+      "updated": "更新时间"
     },
     "status": {
       "dataFeeds": "数据源",
@@ -1452,6 +1464,7 @@
     "upstreamUnavailable": "上游API不可用 — 将自动重试",
     "loadingUcdpEvents": "正在加载UCDP事件",
     "loadingStablecoins": "正在加载稳定币...",
+    "loadingCryptoChannels": "正在加载币圈通道...",
     "scanningThermalData": "正在扫描热数据",
     "calculatingExposure": "正在计算暴露量",
     "computingSignals": "正在计算信号...",

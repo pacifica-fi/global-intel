@@ -15631,6 +15631,140 @@ body.has-breaking-alert .panels-grid {
   color: var(--text-muted);
 }
 
+.crypto-channels-container {
+  padding: 4px 0;
+}
+
+.crypto-channels-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.crypto-summary-item {
+  background: var(--overlay-light);
+  border: 1px solid var(--overlay-medium);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.crypto-summary-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.crypto-summary-value {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.crypto-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.crypto-chart-card {
+  background: var(--overlay-subtle);
+  border: 1px solid var(--overlay-light);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.crypto-chart-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.crypto-volume-chart,
+.crypto-share-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.crypto-bar-label {
+  font-size: 9px;
+  fill: rgba(255, 255, 255, 0.75);
+  font-family: var(--font-body);
+}
+
+.crypto-pie-center {
+  font-size: 10px;
+  fill: var(--accent);
+  font-weight: 600;
+  font-family: var(--font-body);
+}
+
+.crypto-pie-sub {
+  font-size: 9px;
+  fill: var(--text-muted);
+  font-family: var(--font-body);
+}
+
+.crypto-legend {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.crypto-legend-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.crypto-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.crypto-legend-name {
+  color: var(--text-muted);
+}
+
+.crypto-legend-value {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.crypto-channels-footer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--overlay-light);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 640px) {
+  .crypto-channels-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .crypto-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .crypto-channels-footer {
+    flex-direction: column;
+  }
+}
+
 .runtime-config-summary {
   font-size: 11px;
   color: var(--accent);

@@ -72,6 +72,7 @@ import {
   MacroSignalsPanel,
   ETFFlowsPanel,
   StablecoinPanel,
+  CryptoChannelsPanel,
   DisplacementPanel,
   ClimateAnomalyPanel,
   InvestmentsPanel,
@@ -2119,6 +2120,7 @@ export class App {
     this.panels['macro-signals'] = new MacroSignalsPanel();
     this.panels['etf-flows'] = new ETFFlowsPanel();
     this.panels['stablecoins'] = new StablecoinPanel();
+    this.panels['crypto-channels'] = new CryptoChannelsPanel();
 
     // AI Insights Panel (desktop only - hides itself on mobile)
     const insightsPanel = new InsightsPanel();

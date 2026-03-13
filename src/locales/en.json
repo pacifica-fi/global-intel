@@ -104,6 +104,7 @@
     "macroSignals": "Market Radar",
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
+    "cryptoChannels": "Crypto Channels",
     "ucdpEvents": "UCDP Conflict Events",
     "displacement": "UNHCR Displacement",
     "climate": "Climate Anomalies",
@@ -434,6 +435,17 @@
       "mcap": "MCap",
       "vol24h": "24h Vol",
       "chg24h": "24h Chg"
+    },
+    "cryptoChannels": {
+      "trackedMcap": "Tracked MCap",
+      "breadth": "24h Breadth",
+      "avgMove": "Avg 24h Move",
+      "leaderVolume": "Volume Leader",
+      "volumeChannel": "24h Volume Channel",
+      "mcapChannel": "Market Cap Mix",
+      "shares": "Shares",
+      "stableShare": "Stablecoin Share",
+      "updated": "Updated"
     },
     "status": {
       "dataFeeds": "Data Feeds",
@@ -1452,6 +1464,7 @@
     "upstreamUnavailable": "Upstream API unavailable — will retry automatically",
     "loadingUcdpEvents": "Loading UCDP events",
     "loadingStablecoins": "Loading stablecoins...",
+    "loadingCryptoChannels": "Loading crypto channels...",
     "scanningThermalData": "Scanning thermal data",
     "calculatingExposure": "Calculating exposure",
     "computingSignals": "Computing signals...",
