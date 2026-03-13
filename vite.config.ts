@@ -199,7 +199,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         globIgnores: ['**/ml-*.js', '**/onnx*.wasm'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/settings/],
+        navigateFallbackDenylist: [/^\/api\//],
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
@@ -281,7 +281,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        settings: resolve(__dirname, 'settings.html'),
       },
       output: {
         manualChunks(id) {
