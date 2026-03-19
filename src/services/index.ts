@@ -31,3 +31,7 @@ export * from './usa-spending';
 export * from './oil-analytics';
 export { generateSummary, translateText } from './summarization';
 export * from './cached-theater-posture';
+export * from './telegram-osint';
+export * from './sanctions';
+export * from './radiation';
+export * from './social-sentiment';
