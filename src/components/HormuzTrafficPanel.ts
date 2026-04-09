@@ -104,6 +104,10 @@ export class HormuzTrafficPanel extends Panel {
     });
 
     this.mapContainer = mapContainer ?? null;
+
+    // Default to 2x2 size (2 columns + 2 rows)
+    this.getElement().classList.add('col-span-2', 'span-2', 'resized');
+
     this.init();
   }
 
@@ -182,7 +186,7 @@ export class HormuzTrafficPanel extends Panel {
     this.dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     const w = Math.floor(rect.width);
-    const h = 220;
+    const h = 360;
 
     this.canvas.width = w * this.dpr;
     this.canvas.height = h * this.dpr;
@@ -194,19 +198,26 @@ export class HormuzTrafficPanel extends Panel {
 
     ctx.scale(this.dpr, this.dpr);
 
-    // Background — dark ocean
-    ctx.fillStyle = '#0a1628';
+    // Background — dark ocean gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, '#081422');
+    gradient.addColorStop(1, '#0c1e35');
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, w, h);
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(100,150,200,0.12)';
+    // Grid lines with lat/lon labels
+    ctx.strokeStyle = 'rgba(100,150,200,0.10)';
     ctx.lineWidth = 0.5;
+    ctx.font = `${Math.max(8, w * 0.016)}px monospace`;
+    ctx.fillStyle = 'rgba(100,150,200,0.25)';
+    ctx.textAlign = 'left';
     for (let lat = 25; lat <= 28; lat += 0.5) {
       const [, y] = this.project(lat, BOUNDS.west, w, h);
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
       ctx.stroke();
+      if (lat % 1 === 0) ctx.fillText(`${lat}°N`, 4, y - 3);
     }
     for (let lon = 55.5; lon <= 58; lon += 0.5) {
       const [x] = this.project(BOUNDS.south, lon, w, h);
@@ -214,12 +225,13 @@ export class HormuzTrafficPanel extends Panel {
       ctx.moveTo(x, 0);
       ctx.lineTo(x, h);
       ctx.stroke();
+      if (lon % 1 === 0) ctx.fillText(`${lon}°E`, x + 3, h - 4);
     }
 
-    // Draw coastlines
-    ctx.fillStyle = '#1a2744';
-    ctx.strokeStyle = 'rgba(100,150,200,0.35)';
-    ctx.lineWidth = 1;
+    // Draw coastlines with subtle fill gradient
+    ctx.fillStyle = '#14253d';
+    ctx.strokeStyle = 'rgba(80,140,200,0.4)';
+    ctx.lineWidth = 1.2;
     for (const poly of COASTLINES) {
       if (poly.length === 0) continue;
       ctx.beginPath();
@@ -238,10 +250,10 @@ export class HormuzTrafficPanel extends Panel {
 
     // Draw "Strait of Hormuz" label
     const [labelX, labelY] = this.project(26.3, 56.2, w, h);
-    ctx.fillStyle = 'rgba(200,220,255,0.25)';
-    ctx.font = `${Math.max(9, w * 0.028)}px sans-serif`;
+    ctx.fillStyle = 'rgba(200,220,255,0.3)';
+    ctx.font = `bold ${Math.max(10, w * 0.026)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('STRait OF HORMUZ', labelX, labelY);
+    ctx.fillText('STRAIT OF HORMUZ', labelX, labelY);
 
     // Draw vessels
     const vesselList = vessels ?? getHormuzVessels();
@@ -252,13 +264,13 @@ export class HormuzTrafficPanel extends Panel {
 
       // Glow
       ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
       ctx.fillStyle = glow!;
       ctx.fill();
 
       // Dot
       ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = color!;
       ctx.fill();
 
@@ -276,12 +288,22 @@ export class HormuzTrafficPanel extends Panel {
     }
 
     // Water labels
-    ctx.fillStyle = 'rgba(100,180,255,0.2)';
-    ctx.font = `${Math.max(8, w * 0.022)}px sans-serif`;
+    ctx.fillStyle = 'rgba(100,180,255,0.25)';
+    ctx.font = `${Math.max(9, w * 0.024)}px sans-serif`;
     const [pgX, pgY] = this.project(26.8, 55.8, w, h);
     ctx.fillText('Persian Gulf', pgX, pgY);
     const [goX, goY] = this.project(25.6, 57.0, w, h);
     ctx.fillText('Gulf of Oman', goX, goY);
+
+    // Land labels
+    ctx.fillStyle = 'rgba(200,220,255,0.18)';
+    ctx.font = `${Math.max(9, w * 0.022)}px sans-serif`;
+    const [irX, irY] = this.project(27.2, 56.5, w, h);
+    ctx.fillText('IRAN', irX, irY);
+    const [omX, omY] = this.project(25.5, 56.0, w, h);
+    ctx.fillText('OMAN', omX, omY);
+    const [uaeX, uaeY] = this.project(25.3, 55.7, w, h);
+    ctx.fillText('UAE', uaeX, uaeY);
   }
 
   private drawStats(stats: HormuzTrafficStats): void {
