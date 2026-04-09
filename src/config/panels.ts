@@ -26,6 +26,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   asia: { name: 'Asia-Pacific', enabled: true, priority: 1 },
   europe: { name: 'Europe', enabled: true, priority: 1 },
   middleeast: { name: 'Middle East', enabled: true, priority: 1 },
+  'hormuz-traffic': { name: 'Strait of Hormuz Traffic', enabled: true, priority: 1 },
   africa: { name: 'Africa', enabled: true, priority: 1 },
   latam: { name: 'Latin America', enabled: true, priority: 1 },
   energy: { name: 'Energy & Resources', enabled: true, priority: 1 },

@@ -84,6 +84,7 @@
     "cascade": "Infrastructure Cascade",
     "politics": "World News",
     "middleeast": "Middle East",
+    "hormuzTraffic": "Strait of Hormuz Traffic",
     "africa": "Africa",
     "latam": "Latin America",
     "asia": "Asia-Pacific",
@@ -133,7 +134,19 @@
     "telegramOsint": "Telegram OSINT",
     "sanctions": "Sanctions Tracker",
     "radiation": "Radiation Monitor",
-    "socialSentiment": "Social Sentiment"
+    "socialSentiment": "Social Sentiment",
+    "hormuzVesselTypes": {
+      "tanker": "Tankers",
+      "cargo": "Cargo",
+      "passenger": "Passenger",
+      "military": "Military",
+      "other": "Other"
+    },
+    "hormuzCongestion": {
+      "normal": "Normal",
+      "elevated": "Elevated",
+      "high": "High"
+    }
   },
   "modals": {
     "search": {

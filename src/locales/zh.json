@@ -84,6 +84,7 @@
     "cascade": "基础设施级联",
     "politics": "世界新闻",
     "middleeast": "中东",
+    "hormuzTraffic": "霍尔木兹海峡通行",
     "africa": "非洲",
     "latam": "拉丁美洲",
     "asia": "亚太地区",
@@ -129,7 +130,19 @@
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
     "geoHubs": "地缘政治枢纽",
-    "liveWebcams": "实时摄像头"
+    "liveWebcams": "实时摄像头",
+    "hormuzVesselTypes": {
+      "tanker": "油轮",
+      "cargo": "货船",
+      "passenger": "客轮",
+      "military": "军舰",
+      "other": "其他"
+    },
+    "hormuzCongestion": {
+      "normal": "正常",
+      "elevated": "偏高",
+      "high": "拥堵"
+    }
   },
   "modals": {
     "search": {

@@ -77,6 +77,7 @@ import {
   ClimateAnomalyPanel,
   InvestmentsPanel,
   LanguageSelector,
+  HormuzTrafficPanel,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -1930,6 +1931,10 @@ export class App {
     this.attachRelatedAssetHandlers(middleeastPanel);
     this.newsPanels['middleeast'] = middleeastPanel;
     this.panels['middleeast'] = middleeastPanel;
+
+    const hormuzPanel = new HormuzTrafficPanel(this.map);
+    this.panels['hormuz-traffic'] = hormuzPanel;
+    panelsGrid.appendChild(hormuzPanel.getElement());
 
     const layoffsPanel = new NewsPanel('layoffs', t('panels.layoffs'));
     this.attachRelatedAssetHandlers(layoffsPanel);

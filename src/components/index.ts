@@ -40,3 +40,4 @@ export * from './TelegramOsintPanel';
 export * from './SanctionsPanel';
 export * from './RadiationPanel';
 export * from './SocialSentimentPanel';
+export * from './HormuzTrafficPanel';
