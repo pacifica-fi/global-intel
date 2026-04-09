@@ -129,7 +129,11 @@
     "techReadiness": "Tech Readiness Index",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Geopolitical Hubs",
-    "liveWebcams": "Live Webcams"
+    "liveWebcams": "Live Webcams",
+    "telegramOsint": "Telegram OSINT",
+    "sanctions": "Sanctions Tracker",
+    "radiation": "Radiation Monitor",
+    "socialSentiment": "Social Sentiment"
   },
   "modals": {
     "search": {

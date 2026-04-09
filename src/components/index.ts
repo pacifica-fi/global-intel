@@ -36,3 +36,7 @@ export * from './ClimateAnomalyPanel';
 export * from './InvestmentsPanel';
 export * from './LanguageSelector';
 export * from './PentagonPizzaPanel';
+export * from './TelegramOsintPanel';
+export * from './SanctionsPanel';
+export * from './RadiationPanel';
+export * from './SocialSentimentPanel';
