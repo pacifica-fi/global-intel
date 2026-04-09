@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { fetchSanctionsData, type SanctionsData, type SanctionedEntity } from '@/services/sanctions';
+import { fetchSanctionsData, type SanctionsData } from '@/services/sanctions';
 
 export class SanctionsPanel extends Panel {
   private data: SanctionsData | null = null;
@@ -33,7 +33,7 @@ export class SanctionsPanel extends Panel {
       this.render();
     } catch (e) {
       console.error('Sanctions error:', e);
-      this.showError();
+      super.showError('Failed to load sanctions data');
     }
   }
 
@@ -90,11 +90,6 @@ export class SanctionsPanel extends Panel {
 
     container.appendChild(list);
     this.content.appendChild(container);
-    this.updateCount(this.data.totalCount);
-  }
-
-  private showError(): void {
-    this.loadingEl?.remove();
-    this.content.innerHTML = '<div class="panel-error">Failed to load sanctions data</div>';
+    this.setCount(this.data.totalCount);
   }
 }

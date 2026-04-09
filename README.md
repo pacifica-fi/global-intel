@@ -45,7 +45,6 @@ For Builder Program onboarding or integration support:
 - Builder code support is available across REST and WebSocket order endpoints.
 - Current rewards program allocation is up to 10,000,000 points.
 
-
 ## Acknowledgments
 
 Built on [World Monitor](https://github.com/koala73/worldmonitor) by Elie Habib.

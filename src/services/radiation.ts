@@ -1,7 +1,6 @@
 // Radiation Monitoring - Safecast API + EPA RadNet
 // Based on Crucix safecast and epa sources
 
-import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from './runtime-config';
 
 const SAFECAST_API = 'https://api.safecast.org/v2/measurements.json';
@@ -44,8 +43,6 @@ const NUCLEAR_SITES = [
   { id: 'sellafield', name: 'Sellafield', lat: 54.21, lon: -3.48 },
   { id: 'palisades', name: 'Palisades (MI)', lat: 42.32, lon: -86.31 },
 ];
-
-const breaker = createCircuitBreaker<RadiationData>({ name: 'Radiation' });
 
 async function fetchSafecast(): Promise<RadiationReading[]> {
   try {

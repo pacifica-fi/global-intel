@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { fetchSentimentData, type SentimentData, type SocialPost } from '@/services/social-sentiment';
+import { fetchSentimentData, type SentimentData } from '@/services/social-sentiment';
 
 export class SocialSentimentPanel extends Panel {
   private data: SentimentData | null = null;
@@ -33,7 +33,7 @@ export class SocialSentimentPanel extends Panel {
       this.render();
     } catch (e) {
       console.error('Social Sentiment error:', e);
-      this.showError();
+      super.showError('Failed to load sentiment data');
     }
   }
 
@@ -86,11 +86,6 @@ export class SocialSentimentPanel extends Panel {
     container.appendChild(list);
 
     this.content.appendChild(container);
-    this.updateCount(this.data.totalPosts);
-  }
-
-  private showError(): void {
-    this.loadingEl?.remove();
-    this.content.innerHTML = '<div class="panel-error">Failed to load sentiment data</div>';
+    this.setCount(this.data.totalPosts);
   }
 }

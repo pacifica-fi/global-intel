@@ -32,7 +32,11 @@ export type RuntimeFeatureId =
   | 'aisRelay'
   | 'openskyRelay'
   | 'finnhubMarkets'
-  | 'nasaFirms';
+  | 'nasaFirms'
+  | 'radiation'
+  | 'sanctions'
+  | 'socialSentiment'
+  | 'telegramOsint';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -69,6 +73,10 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   openskyRelay: true,
   finnhubMarkets: true,
   nasaFirms: true,
+  radiation: true,
+  sanctions: true,
+  socialSentiment: true,
+  telegramOsint: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -169,6 +177,34 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Fire Information for Resource Management System satellite data.',
     requiredSecrets: ['NASA_FIRMS_API_KEY'],
     fallback: 'FIRMS fire layer uses public VIIRS feed.',
+  },
+  {
+    id: 'radiation',
+    name: 'Radiation monitoring',
+    description: 'Safecast and EPA RadNet radiation monitoring.',
+    requiredSecrets: [],
+    fallback: 'Radiation panel is disabled.',
+  },
+  {
+    id: 'sanctions',
+    name: 'Sanctions tracking',
+    description: 'OFAC and OpenSanctions aggregated sanctions tracking.',
+    requiredSecrets: [],
+    fallback: 'Sanctions panel is disabled.',
+  },
+  {
+    id: 'socialSentiment',
+    name: 'Social sentiment',
+    description: 'Reddit and Bluesky sentiment signal sampling.',
+    requiredSecrets: [],
+    fallback: 'Social sentiment panel is disabled.',
+  },
+  {
+    id: 'telegramOsint',
+    name: 'Telegram OSINT',
+    description: 'Curated Telegram OSINT channel list.',
+    requiredSecrets: [],
+    fallback: 'Telegram OSINT panel is disabled.',
   },
 ];
 

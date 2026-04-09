@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { fetchTelegramOsint, type TelegramOsintData, type TelegramOsintItem } from '@/services/telegram-osint';
+import { fetchTelegramOsint, type TelegramOsintData } from '@/services/telegram-osint';
 
 export class TelegramOsintPanel extends Panel {
   private data: TelegramOsintData | null = null;
@@ -33,7 +33,7 @@ export class TelegramOsintPanel extends Panel {
       this.render();
     } catch (e) {
       console.error('Telegram OSINT error:', e);
-      this.showError();
+      super.showError('Failed to load Telegram OSINT data');
     }
   }
 
@@ -73,11 +73,6 @@ export class TelegramOsintPanel extends Panel {
     });
 
     this.content.appendChild(list);
-    this.updateCount(this.data.items.length);
-  }
-
-  private showError(): void {
-    this.loadingEl?.remove();
-    this.content.innerHTML = '<div class="panel-error">Failed to load Telegram OSINT data</div>';
+    this.setCount(this.data.items.length);
   }
 }

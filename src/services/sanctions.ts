@@ -1,10 +1,8 @@
 // Sanctions Tracker - OFAC SDN List + OpenSanctions aggregated data
 // Based on Crucix ofac and opensanctions sources
 
-import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from './runtime-config';
 
-const OFAC_API = 'https://api.exchangerate-api.com/v4/latest/USD';
 const OPEN_SANCTIONS_API = 'https://www.opensanctions.org/api/search/';
 
 export interface SanctionedEntity {
@@ -26,18 +24,11 @@ export interface SanctionsData {
   newThisWeek: number;
 }
 
-const SDNT_PROGRAMS = [
-  'SDNT', 'SDNTK', 'SDN', 'FSE', 'IFCA', 'HRIT', 'IRAN', 'VENEZUELA',
-  'RUSSIA', 'BELARUS', 'UKRAINE', 'DPRK', 'SYRIA', 'CUBA'
-];
-
-const breaker = createCircuitBreaker<SanctionsData>({ name: 'Sanctions' });
-
 async function fetchOFAC(): Promise<SanctionedEntity[]> {
   try {
     // Using Treasury API as fallback
     const resp = await fetch('https://api.treasury.gov/services/v1/future/OFAC%20 SDN%20List.json');
-    const data = await resp.json();
+    await resp.json();
     return [];
   } catch {
     return [];

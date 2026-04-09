@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { fetchRadiationData, type RadiationData, type RadiationSite } from '@/services/radiation';
+import { fetchRadiationData, type RadiationData } from '@/services/radiation';
 
 export class RadiationPanel extends Panel {
   private data: RadiationData | null = null;
@@ -32,7 +32,7 @@ export class RadiationPanel extends Panel {
       this.render();
     } catch (e) {
       console.error('Radiation error:', e);
-      this.showError();
+      super.showError('Failed to load radiation data');
     }
   }
 
@@ -69,11 +69,6 @@ export class RadiationPanel extends Panel {
     container.appendChild(sites);
 
     this.content.appendChild(container);
-    this.updateCount(this.data.sites.length);
-  }
-
-  private showError(): void {
-    this.loadingEl?.remove();
-    this.content.innerHTML = '<div class="panel-error">Failed to load radiation data</div>';
+    this.setCount(this.data.sites.length);
   }
 }

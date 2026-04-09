@@ -1,7 +1,6 @@
 // Social Sentiment - Reddit + Bluesky analysis for geopolitical/market topics
 // Based on Crucix reddit and bluesky sources
 
-import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from './runtime-config';
 
 const REDDIT_API = 'https://www.reddit.com';
@@ -46,8 +45,6 @@ const TRENDING_KEYWORDS = [
   'oil', 'gold', 'dollar', 'inflation', 'recession',
   'sanctions', 'military', 'war', 'peace'
 ];
-
-const breaker = createCircuitBreaker<SentimentData>({ name: 'Social Sentiment' });
 
 function analyzeSentiment(text: string): 'bullish' | 'bearish' | 'neutral' {
   const lower = text.toLowerCase();
