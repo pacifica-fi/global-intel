@@ -1,7 +1,9 @@
 /**
  * Strait of Hormuz Traffic Panel
- * Shows a canvas mini-map with vessel positions and traffic statistics.
+ * Uses an embedded MapLibre GL map with CARTO dark tiles for accurate geography.
+ * Vessels are rendered as circle markers with type-based colors.
  */
+import maplibregl from 'maplibre-gl';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import {
@@ -16,75 +18,35 @@ import {
 import { isAisConfigured } from '@/services/ais';
 import type { MapContainer } from './MapContainer';
 
-// Bounding box for projection
-const BOUNDS = { north: 27.5, south: 25.0, west: 55.5, east: 57.5 };
+// Map center and zoom for the Strait of Hormuz
+const MAP_CENTER: [number, number] = [56.5, 26.5]; // [lon, lat]
+const MAP_ZOOM = 7.5;
 
-// Simplified coastline polygons (lat, lon pairs) for the Strait of Hormuz region.
-// Iran south coast, Musandam peninsula (Oman), UAE north coast, Qeshm/Hengam islands.
-const COASTLINES: [number, number][][] = [
-  // Iran south coast (west to east)
-  [
-    [27.0, 55.5], [26.9, 55.6], [26.8, 55.7], [26.7, 55.8],
-    [26.65, 55.9], [26.6, 56.0], [26.55, 56.1], [26.5, 56.15],
-    [26.45, 56.2], [26.4, 56.25], [26.35, 56.3], [26.3, 56.35],
-    [26.25, 56.4], [26.2, 56.5], [26.15, 56.6], [26.1, 56.7],
-    [26.05, 56.8], [26.0, 56.9], [25.95, 57.0], [25.9, 57.1],
-    [25.85, 57.2], [25.8, 57.3], [25.75, 57.4], [25.7, 57.5],
-    // Extend north to fill the "land" above the coast
-    [27.5, 57.5], [27.5, 55.5], [27.0, 55.5],
-  ],
-  // Musandam Peninsula (Oman) — south side of the strait, eastern part
-  [
-    [26.4, 56.2], [26.35, 56.25], [26.3, 56.2], [26.25, 56.15],
-    [26.2, 56.1], [26.15, 56.0], [26.1, 55.9], [26.0, 55.8],
-    [25.9, 55.7], [25.8, 55.6], [25.7, 55.5],
-    // Extend south to fill "land"
-    [25.0, 55.5], [25.0, 56.4], [26.4, 56.4], [26.4, 56.2],
-  ],
-  // UAE northern coast (west of Musandam)
-  [
-    [25.7, 55.5], [25.65, 55.6], [25.55, 55.7], [25.45, 55.8],
-    [25.35, 55.9], [25.25, 56.0], [25.15, 56.1], [25.05, 56.2],
-    [25.0, 56.3], [25.0, 56.4],
-    [25.0, 55.5], [25.7, 55.5],
-  ],
-  // Qeshm Island
-  [
-    [26.75, 55.7], [26.7, 55.75], [26.65, 55.8], [26.6, 55.85],
-    [26.58, 55.9], [26.6, 55.95], [26.65, 56.0], [26.7, 56.05],
-    [26.75, 56.0], [26.78, 55.9], [26.75, 55.8], [26.75, 55.7],
-  ],
-  // Hengam Island (small, near Qeshm)
-  [
-    [26.55, 55.88], [26.53, 55.9], [26.52, 55.93], [26.54, 55.95],
-    [26.56, 55.93], [26.55, 55.88],
-  ],
-];
+// CARTO dark basemap style (same as main map)
+const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
-// Vessel type colors
+// Unique IDs for the vessel source and layer
+const VESSEL_SOURCE_ID = 'hormuz-vessels';
+const VESSEL_LAYER_ID = 'hormuz-vessel-circles';
+const VESSEL_GLOW_LAYER_ID = 'hormuz-vessel-glow';
+
+// Vessel type colors (matching original palette)
 const VESSEL_COLORS: Record<string, string> = {
-  tanker: '#ff6b35',    // Orange — oil/LNG carriers
-  cargo: '#4ecdc4',     // Teal — container/bulk
-  passenger: '#45b7d1', // Blue — cruise/ferry
-  military: '#c084fc',  // Purple — warships
-  other: '#94a3b8',     // Gray — other
-};
-
-const VESSEL_GLOW_COLORS: Record<string, string> = {
-  tanker: 'rgba(255,107,53,0.4)',
-  cargo: 'rgba(78,205,196,0.4)',
-  passenger: 'rgba(69,183,209,0.4)',
-  military: 'rgba(192,132,252,0.4)',
-  other: 'rgba(148,163,184,0.3)',
+  tanker: '#ff6b35',
+  cargo: '#4ecdc4',
+  passenger: '#45b7d1',
+  military: '#c084fc',
+  other: '#94a3b8',
 };
 
 export class HormuzTrafficPanel extends Panel {
-  private canvas: HTMLCanvasElement | null = null;
+  private mapContainer: HTMLElement | null = null;
+  private map: maplibregl.Map | null = null;
   private statsContainer: HTMLElement | null = null;
-  private mapContainer: MapContainer | null = null;
+  private mainMapContainer: MapContainer | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
-  private resizeObserver: ResizeObserver | null = null;
-  private dpr = 1;
+  private mapReady = false;
+  private hormuzMapId: string;
 
   constructor(mapContainer?: MapContainer) {
     super({
@@ -103,39 +65,39 @@ export class HormuzTrafficPanel extends Panel {
         Data from AISStream.io. Click map to fly to region.`,
     });
 
-    this.mapContainer = mapContainer ?? null;
+    this.mainMapContainer = mapContainer ?? null;
+    this.hormuzMapId = `hormuz-map-${Date.now()}`;
 
-    // Default to 2x2 size (2 columns + 2 rows)
+    // Default to 2x2 size
     this.getElement().classList.add('col-span-2', 'span-2', 'resized');
 
     this.init();
   }
 
   private init(): void {
-    if (!isAisConfigured()) {
-      this.showConfigError(
-        'AIS data source not configured. Set AISSTREAM_API_KEY to enable vessel tracking.'
-      );
-      return;
+    this.buildUI();
+
+    if (isAisConfigured()) {
+      initHormuzTracking();
     }
 
-    this.buildUI();
-    initHormuzTracking();
-    this.refresh();
-    // Refresh every 10 seconds matching AIS polling interval
+    // Refresh every 10 seconds
     this.refreshTimer = setInterval(() => this.refresh(), 10_000);
+    // Initial refresh after map loads
+    setTimeout(() => this.refresh(), 1500);
   }
 
   private buildUI(): void {
-    // Canvas container
+    // Map wrapper
     const mapWrap = document.createElement('div');
     mapWrap.className = 'hormuz-traffic-map';
 
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'hormuz-traffic-canvas';
-    this.canvas.style.cursor = 'pointer';
-    this.canvas.addEventListener('click', () => this.flyToHormuz());
-    mapWrap.appendChild(this.canvas);
+    // MapLibre container
+    this.mapContainer = document.createElement('div');
+    this.mapContainer.id = this.hormuzMapId;
+    this.mapContainer.className = 'hormuz-traffic-maplibre';
+    this.mapContainer.addEventListener('click', () => this.flyToHormuz());
+    mapWrap.appendChild(this.mapContainer);
 
     // Legend overlay
     const legend = document.createElement('div');
@@ -156,154 +118,144 @@ export class HormuzTrafficPanel extends Panel {
     this.content.appendChild(mapWrap);
     this.content.appendChild(this.statsContainer);
 
-    // Handle resize
-    this.resizeObserver = new ResizeObserver(() => this.drawMap());
-    this.resizeObserver.observe(mapWrap);
+    // Initialize MapLibre map
+    requestAnimationFrame(() => this.initMap());
+  }
+
+  private initMap(): void {
+    if (!this.mapContainer) return;
+
+    try {
+      this.map = new maplibregl.Map({
+        container: this.mapContainer,
+        style: DARK_STYLE,
+        center: MAP_CENTER,
+        zoom: MAP_ZOOM,
+        attributionControl: false,
+        interactive: false, // Read-only mini-map; click flies the main map
+        trackResize: true,
+        maxBounds: [
+          [54.5, 24.0], // SW
+          [58.5, 28.5], // NE
+        ],
+      });
+
+      this.map.on('load', () => {
+        this.mapReady = true;
+        this.addVesselLayers();
+        this.refresh();
+      });
+    } catch {
+      // Fallback: show a simple message if WebGL not available
+      if (this.mapContainer) {
+        this.mapContainer.innerHTML = '<div class="hormuz-map-fallback">Map unavailable</div>';
+      }
+    }
+  }
+
+  private addVesselLayers(): void {
+    if (!this.map || !this.mapReady) return;
+
+    // Add empty GeoJSON source for vessels
+    this.map.addSource(VESSEL_SOURCE_ID, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+
+    // Glow layer (larger, transparent circles behind the dots)
+    this.map.addLayer({
+      id: VESSEL_GLOW_LAYER_ID,
+      type: 'circle',
+      source: VESSEL_SOURCE_ID,
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          6, 6,
+          10, 14,
+        ] as any,
+        'circle-color': [
+          'match', ['get', 'category'],
+          'tanker', 'rgba(255,107,53,0.35)',
+          'cargo', 'rgba(78,205,196,0.35)',
+          'passenger', 'rgba(69,183,209,0.35)',
+          'military', 'rgba(192,132,252,0.35)',
+          'rgba(148,163,184,0.25)',
+        ] as any,
+        'circle-blur': 0.6,
+      },
+    });
+
+    // Solid vessel dots
+    this.map.addLayer({
+      id: VESSEL_LAYER_ID,
+      type: 'circle',
+      source: VESSEL_SOURCE_ID,
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          6, 3,
+          10, 6,
+        ] as any,
+        'circle-color': [
+          'match', ['get', 'category'],
+          'tanker', VESSEL_COLORS.tanker!,
+          'cargo', VESSEL_COLORS.cargo!,
+          'passenger', VESSEL_COLORS.passenger!,
+          'military', VESSEL_COLORS.military!,
+          VESSEL_COLORS.other!,
+        ] as any,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': 'rgba(255,255,255,0.3)',
+      },
+    });
   }
 
   private refresh(): void {
     const stats = getHormuzStats();
     const vessels = getHormuzVessels();
     this.setCount(stats.total);
-    this.drawMap(vessels);
+    this.updateVessels(vessels);
     this.drawStats(stats);
   }
 
-  /**
-   * Project lat/lon to canvas pixel coordinates.
-   */
-  private project(lat: number, lon: number, w: number, h: number): [number, number] {
-    const x = ((lon - BOUNDS.west) / (BOUNDS.east - BOUNDS.west)) * w;
-    const y = ((BOUNDS.north - lat) / (BOUNDS.north - BOUNDS.south)) * h;
-    return [x, y];
-  }
+  private updateVessels(vessels: HormuzVessel[]): void {
+    if (!this.map || !this.mapReady) return;
 
-  private drawMap(vessels?: HormuzVessel[]): void {
-    if (!this.canvas) return;
-    const container = this.canvas.parentElement;
-    if (!container) return;
+    const features: GeoJSON.Feature[] = vessels.map((v) => ({
+      type: 'Feature' as const,
+      properties: {
+        category: v.category,
+        name: v.name,
+        mmsi: v.mmsi,
+        speed: v.speed ?? 0,
+        heading: v.heading ?? 0,
+      },
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [v.lon, v.lat],
+      },
+    }));
 
-    this.dpr = window.devicePixelRatio || 1;
-    const rect = container.getBoundingClientRect();
-    const w = Math.floor(rect.width);
-    const h = 360;
-
-    this.canvas.width = w * this.dpr;
-    this.canvas.height = h * this.dpr;
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.scale(this.dpr, this.dpr);
-
-    // Background — dark ocean gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, '#081422');
-    gradient.addColorStop(1, '#0c1e35');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h);
-
-    // Grid lines with lat/lon labels
-    ctx.strokeStyle = 'rgba(100,150,200,0.10)';
-    ctx.lineWidth = 0.5;
-    ctx.font = `${Math.max(8, w * 0.016)}px monospace`;
-    ctx.fillStyle = 'rgba(100,150,200,0.25)';
-    ctx.textAlign = 'left';
-    for (let lat = 25; lat <= 28; lat += 0.5) {
-      const [, y] = this.project(lat, BOUNDS.west, w, h);
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-      if (lat % 1 === 0) ctx.fillText(`${lat}°N`, 4, y - 3);
-    }
-    for (let lon = 55.5; lon <= 58; lon += 0.5) {
-      const [x] = this.project(BOUNDS.south, lon, w, h);
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-      if (lon % 1 === 0) ctx.fillText(`${lon}°E`, x + 3, h - 4);
+    const source = this.map.getSource(VESSEL_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features,
+      });
     }
 
-    // Draw coastlines with subtle fill gradient
-    ctx.fillStyle = '#14253d';
-    ctx.strokeStyle = 'rgba(80,140,200,0.4)';
-    ctx.lineWidth = 1.2;
-    for (const poly of COASTLINES) {
-      if (poly.length === 0) continue;
-      ctx.beginPath();
-      const first = poly[0]!;
-      const [x0, y0] = this.project(first[0], first[1], w, h);
-      ctx.moveTo(x0, y0);
-      for (let i = 1; i < poly.length; i++) {
-        const pt = poly[i]!;
-        const [px, py] = this.project(pt[0], pt[1], w, h);
-        ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+    // Show/hide "no data" watermark
+    const noDataEl = this.mapContainer?.querySelector('.hormuz-no-data');
+    if (vessels.length === 0 && !noDataEl) {
+      const el = document.createElement('div');
+      el.className = 'hormuz-no-data';
+      el.textContent = isAisConfigured()
+        ? (t('panels.hormuzNoData') || 'Waiting for vessel data...')
+        : (t('panels.hormuzAisNotConfigured') || 'AIS not configured');
+      this.mapContainer?.appendChild(el);
+    } else if (vessels.length > 0 && noDataEl) {
+      noDataEl.remove();
     }
-
-    // Draw "Strait of Hormuz" label
-    const [labelX, labelY] = this.project(26.3, 56.2, w, h);
-    ctx.fillStyle = 'rgba(200,220,255,0.3)';
-    ctx.font = `bold ${Math.max(10, w * 0.026)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('STRAIT OF HORMUZ', labelX, labelY);
-
-    // Draw vessels
-    const vesselList = vessels ?? getHormuzVessels();
-    for (const v of vesselList) {
-      const [x, y] = this.project(v.lat, v.lon, w, h);
-      const color = VESSEL_COLORS[v.category] ?? VESSEL_COLORS.other;
-      const glow = VESSEL_GLOW_COLORS[v.category] ?? VESSEL_GLOW_COLORS.other;
-
-      // Glow
-      ctx.beginPath();
-      ctx.arc(x, y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = glow!;
-      ctx.fill();
-
-      // Dot
-      ctx.beginPath();
-      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = color!;
-      ctx.fill();
-
-      // Direction indicator (small line showing heading)
-      if (v.heading && v.heading !== 511 && v.speed && v.speed > 0.5) {
-        const headingRad = ((v.heading - 90) * Math.PI) / 180;
-        const len = 6;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + Math.cos(headingRad) * len, y + Math.sin(headingRad) * len);
-        ctx.strokeStyle = color!;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
-
-    // Water labels
-    ctx.fillStyle = 'rgba(100,180,255,0.25)';
-    ctx.font = `${Math.max(9, w * 0.024)}px sans-serif`;
-    const [pgX, pgY] = this.project(26.8, 55.8, w, h);
-    ctx.fillText('Persian Gulf', pgX, pgY);
-    const [goX, goY] = this.project(25.6, 57.0, w, h);
-    ctx.fillText('Gulf of Oman', goX, goY);
-
-    // Land labels
-    ctx.fillStyle = 'rgba(200,220,255,0.18)';
-    ctx.font = `${Math.max(9, w * 0.022)}px sans-serif`;
-    const [irX, irY] = this.project(27.2, 56.5, w, h);
-    ctx.fillText('IRAN', irX, irY);
-    const [omX, omY] = this.project(25.5, 56.0, w, h);
-    ctx.fillText('OMAN', omX, omY);
-    const [uaeX, uaeY] = this.project(25.3, 55.7, w, h);
-    ctx.fillText('UAE', uaeX, uaeY);
   }
 
   private drawStats(stats: HormuzTrafficStats): void {
@@ -347,22 +299,22 @@ export class HormuzTrafficPanel extends Panel {
   }
 
   private flyToHormuz(): void {
-    if (!this.mapContainer) return;
+    if (!this.mainMapContainer) return;
     const center = getHormuzCenter();
-    this.mapContainer.setCenter(center.lat, center.lon, 8);
+    this.mainMapContainer.setCenter(center.lat, center.lon, 8);
   }
 
-  /**
-   * Set the map container reference (can be called after construction).
-   */
   public setMapContainer(mapContainer: MapContainer): void {
-    this.mapContainer = mapContainer;
+    this.mainMapContainer = mapContainer;
   }
 
   public override destroy(): void {
     super.destroy();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
-    if (this.resizeObserver) this.resizeObserver.disconnect();
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
     disconnectHormuzTracking();
   }
 }

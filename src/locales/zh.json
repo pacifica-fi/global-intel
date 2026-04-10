@@ -142,7 +142,9 @@
       "normal": "正常",
       "elevated": "偏高",
       "high": "拥堵"
-    }
+    },
+    "hormuzNoData": "等待船只数据...",
+    "hormuzAisNotConfigured": "AIS 数据未配置"
   },
   "modals": {
     "search": {

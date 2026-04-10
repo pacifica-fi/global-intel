@@ -146,7 +146,9 @@
       "normal": "Normal",
       "elevated": "Elevated",
       "high": "High"
-    }
+    },
+    "hormuzNoData": "Waiting for vessel data...",
+    "hormuzAisNotConfigured": "AIS not configured"
   },
   "modals": {
     "search": {
