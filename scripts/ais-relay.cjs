@@ -85,6 +85,14 @@ function getGridKey(lat, lon) {
   return `${gridLat},${gridLon}`;
 }
 
+function isNearChokepoint(lat, lon) {
+  for (const cp of CHOKEPOINTS) {
+    const d = Math.sqrt((lat - cp.lat) ** 2 + (lon - cp.lon) ** 2);
+    if (d <= cp.radius) return true;
+  }
+  return false;
+}
+
 function isLikelyMilitaryCandidate(meta) {
   const mmsi = String(meta?.MMSI || '');
   const shipType = Number(meta?.ShipType);
@@ -150,7 +158,8 @@ function processPositionReportForSnapshot(data) {
   cell.vessels.add(mmsi);
   cell.lastUpdate = now;
 
-  if (isLikelyMilitaryCandidate(meta)) {
+  const nearChokepoint = isNearChokepoint(lat, lon);
+  if (isLikelyMilitaryCandidate(meta) || nearChokepoint) {
     candidateReports.set(mmsi, {
       mmsi,
       name: meta.ShipName || '',
