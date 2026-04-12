@@ -55,7 +55,7 @@ const GAP_THRESHOLD = 60 * 60 * 1000; // 1 hour
 const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTERVAL_MS || 5000));
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
-const HORMUZ_BOUNDS = { north: 28, south: 23, west: 52, east: 60 };
+const HORMUZ_BOUNDS = { north: 30, south: 22, west: 48, east: 62 };
 const MAX_HORMUZ_VESSELS = 2000;
 
 const vessels = new Map();
@@ -1047,6 +1047,104 @@ function getCorsOrigin(req) {
   return '';
 }
 
+// ── AISHub supplementary AIS data for Hormuz ──
+// AISHub (aishub.net) provides free AIS data via HTTP API (max 1 request/minute).
+// Used as a supplementary source specifically for the Hormuz/Persian Gulf region
+// where AISStream's terrestrial coverage is limited.
+const AISHUB_USERNAME = process.env.AISHUB_USERNAME || '';
+const AISHUB_POLL_INTERVAL_MS = 65 * 1000; // 65s (AISHub allows max 1 req/min)
+const AISHUB_HORMUZ_BOUNDS = { latmin: 22, latmax: 30, lonmin: 48, lonmax: 62 };
+let aishubInterval = null;
+let aishubLastFetch = 0;
+let aishubVesselCount = 0;
+
+function fetchAishubHormuz() {
+  if (!AISHUB_USERNAME) return;
+  const now = Date.now();
+  if (now - aishubLastFetch < 60000) return; // Rate limit guard
+  aishubLastFetch = now;
+
+  const url = `https://data.aishub.net/ws.php?username=${encodeURIComponent(AISHUB_USERNAME)}&format=1&output=json&compress=0` +
+    `&latmin=${AISHUB_HORMUZ_BOUNDS.latmin}&latmax=${AISHUB_HORMUZ_BOUNDS.latmax}` +
+    `&lonmin=${AISHUB_HORMUZ_BOUNDS.lonmin}&lonmax=${AISHUB_HORMUZ_BOUNDS.lonmax}&interval=60`;
+
+  const https = require('https');
+  const request = https.get(url, {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'GlobalIntel/1.0' },
+    timeout: 30000,
+  }, (response) => {
+    if (response.statusCode !== 200) {
+      console.error(`[AISHub] HTTP ${response.statusCode}`);
+      response.resume();
+      return;
+    }
+    let data = '';
+    response.on('data', chunk => data += chunk);
+    response.on('end', () => {
+      try {
+        const parsed = JSON.parse(data);
+        if (!Array.isArray(parsed) || parsed.length < 2 || !Array.isArray(parsed[1])) {
+          if (parsed[0]?.ERROR) console.error('[AISHub] Error:', parsed[0].ERROR);
+          return;
+        }
+        const vessels_arr = parsed[1];
+        let count = 0;
+        for (const v of vessels_arr) {
+          const lat = Number(v.LATITUDE);
+          const lon = Number(v.LONGITUDE);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          const mmsi = String(v.MMSI || '');
+          if (!mmsi) continue;
+          const now2 = Date.now();
+          vessels.set(mmsi, {
+            mmsi,
+            name: v.NAME || '',
+            lat,
+            lon,
+            timestamp: now2,
+            shipType: v.TYPE != null ? Number(v.TYPE) : undefined,
+            heading: v.HEADING != null && v.HEADING !== 511 ? Number(v.HEADING) : undefined,
+            speed: v.SOG != null && v.SOG < 102.4 ? Number(v.SOG) : undefined,
+            course: v.COG != null && v.COG < 360 ? Number(v.COG) : undefined,
+          });
+          // Also add to candidate reports if near chokepoint
+          if (isNearChokepoint(lat, lon)) {
+            candidateReports.set(mmsi, {
+              mmsi,
+              name: v.NAME || '',
+              lat, lon,
+              shipType: v.TYPE != null ? Number(v.TYPE) : undefined,
+              heading: v.HEADING != null && v.HEADING !== 511 ? Number(v.HEADING) : undefined,
+              speed: v.SOG != null && v.SOG < 102.4 ? Number(v.SOG) : undefined,
+              course: v.COG != null && v.COG < 360 ? Number(v.COG) : undefined,
+              timestamp: now2,
+            });
+          }
+          count++;
+        }
+        aishubVesselCount = count;
+        if (count > 0) console.log(`[AISHub] Merged ${count} Hormuz vessels into snapshot`);
+      } catch (e) {
+        console.error('[AISHub] Parse error:', e.message);
+      }
+    });
+  });
+  request.on('error', (err) => {
+    console.error('[AISHub] Error:', err.message);
+  });
+  request.on('timeout', () => {
+    request.destroy();
+    console.error('[AISHub] Timeout');
+  });
+}
+
+function startAishubPolling() {
+  if (!AISHUB_USERNAME || aishubInterval) return;
+  console.log('[AISHub] Starting Hormuz supplementary polling');
+  fetchAishubHormuz(); // Initial fetch
+  aishubInterval = setInterval(fetchAishubHormuz, AISHUB_POLL_INTERVAL_MS);
+}
+
 const server = http.createServer(async (req, res) => {
   const corsOrigin = getCorsOrigin(req);
   if (corsOrigin) {
@@ -1070,6 +1168,8 @@ const server = http.createServer(async (req, res) => {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
       vessels: vessels.size,
       densityZones: Array.from(densityGrid.values()).filter(c => c.vessels.size >= 2).length,
+      aishub: aishubVesselCount,
+      hormuzUpstream: hormuzUpstreamSocket?.readyState === WebSocket.OPEN,
       cache: {
         opensky: openskyResponseCache.size,
         rss: rssResponseCache.size,
@@ -1081,6 +1181,7 @@ const server = http.createServer(async (req, res) => {
   } else if (req.url.startsWith('/ais/snapshot')) {
     // Aggregated AIS snapshot for server-side fanout
     connectUpstream();
+    startAishubPolling();
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
     const includeHormuz = url.searchParams.get('hormuz') === 'true';
@@ -1278,13 +1379,16 @@ function connectUpstream() {
       BoundingBoxes: [[[-90, -180], [90, 180]]],
       FilterMessageTypes: ['PositionReport'],
     }));
+    // Also start Hormuz-focused connection for better data density
+    connectHormuzUpstream();
   });
 
   socket.on('message', (data) => {
     if (upstreamSocket !== socket) return;
     messageCount++;
     if (messageCount % 1000 === 0) {
-      console.log(`[Relay] ${messageCount} messages, ${clients.size} clients, cache: opensky=${openskyResponseCache.size} rss=${rssResponseCache.size}`);
+      const hormuzCount = getHormuzVesselsSnapshot().length;
+      console.log(`[Relay] ${messageCount} msgs, ${vessels.size} vessels, Hormuz: ${hormuzCount}, clients: ${clients.size}`);
     }
     const message = data.toString();
     try {
@@ -1317,6 +1421,64 @@ function connectUpstream() {
 
   socket.on('error', (err) => {
     console.error('[Relay] Upstream error:', err.message);
+  });
+}
+
+// ── Hormuz-focused upstream connection ──
+// Second AISStream connection subscribed only to the Persian Gulf / Strait of Hormuz.
+// On the free plan this may be rejected (1 connection limit) — that's fine, the global
+// connection still feeds the system. If accepted, we get dramatically better data density
+// because all allocated bandwidth goes to this small region.
+let hormuzUpstreamSocket = null;
+const HORMUZ_WS_BOUNDS = [[[22, 50], [30, 62]]]; // Persian Gulf + Gulf of Oman
+let hormuzMsgCount = 0;
+
+function connectHormuzUpstream() {
+  if (hormuzUpstreamSocket?.readyState === WebSocket.OPEN ||
+      hormuzUpstreamSocket?.readyState === WebSocket.CONNECTING) return;
+
+  console.log('[Relay-Hormuz] Connecting to aisstream.io (Hormuz region)...');
+  const socket = new WebSocket(AISSTREAM_URL);
+  hormuzUpstreamSocket = socket;
+
+  socket.on('open', () => {
+    if (hormuzUpstreamSocket !== socket) {
+      socket.close();
+      return;
+    }
+    console.log('[Relay-Hormuz] Connected, subscribing to Persian Gulf region');
+    socket.send(JSON.stringify({
+      APIKey: API_KEY,
+      BoundingBoxes: HORMUZ_WS_BOUNDS,
+      FilterMessageTypes: ['PositionReport'],
+    }));
+  });
+
+  socket.on('message', (data) => {
+    if (hormuzUpstreamSocket !== socket) return;
+    hormuzMsgCount++;
+    if (hormuzMsgCount % 500 === 0) {
+      const hormuzCount = getHormuzVesselsSnapshot().length;
+      console.log(`[Relay-Hormuz] ${hormuzMsgCount} msgs, Hormuz vessels: ${hormuzCount}`);
+    }
+    try {
+      const parsed = JSON.parse(data.toString());
+      if (parsed?.MessageType === 'PositionReport') {
+        processPositionReportForSnapshot(parsed);
+      }
+    } catch {}
+  });
+
+  socket.on('close', () => {
+    if (hormuzUpstreamSocket === socket) {
+      hormuzUpstreamSocket = null;
+      console.log('[Relay-Hormuz] Disconnected, reconnecting in 8s...');
+      setTimeout(connectHormuzUpstream, 8000);
+    }
+  });
+
+  socket.on('error', (err) => {
+    console.error('[Relay-Hormuz] Error:', err.message);
   });
 }
 

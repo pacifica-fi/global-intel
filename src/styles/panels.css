@@ -80,8 +80,20 @@
   font-size: 12px;
   font-weight: 500;
   pointer-events: none;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-align: center;
+  line-height: 1.6;
+  z-index: 2;
+}
+
+.hormuz-no-data::after {
+  content: 'AIS data coverage varies by region';
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: rgba(200, 220, 255, 0.2);
+  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .hormuz-traffic-legend {

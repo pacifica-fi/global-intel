@@ -29,7 +29,7 @@ const COLORS: Record<string, string> = {
   other: '#fbbf24',
 };
 
-// Simplified vessel classification by name patterns
+// Simplified vessel classification by name patterns + AIS ship type codes
 function guessCategory(v: AisPositionData): string {
   const name = (v.name || '').toUpperCase();
   const st = v.shipType;
@@ -39,10 +39,13 @@ function guessCategory(v: AisPositionData): string {
     if (st >= 70 && st <= 79) return 'cargo';
     if (st >= 60 && st <= 69) return 'passenger';
   }
-  if (/TANKER|CRUDE|LNG|LPG|GAS|OIL|PRODUCT|NATURAL/i.test(name)) return 'tanker';
-  if (/CONTAINER|BULK|CARGO|CARRIER|FEEDER/i.test(name)) return 'cargo';
-  if (/CRUISE|FERRY|PASSENGER/i.test(name)) return 'passenger';
-  if (/USS|USNS|HMS|INS|JS |PLAN|ROKS|TCG|CGC|PATROL/i.test(name)) return 'military';
+  // Name-based classification (common in Persian Gulf where shipType is often missing)
+  if (/TANKER|CRUDE|LNG|LPG|GAS CARR|OIL|PRODUCT|NATURAL|BITUMEN|NAPHTHA|CONDENSATE|FUEL|PETRO|MT\s|MT\.|M\.T\.|SUNNY|DIANA|NITC|NIOC|VLCC|SUEZMAX|AFRAMAX|PANAMAX/i.test(name)) return 'tanker';
+  if (/CONTAINER|BULK|CARGO|CARRIER|FEEDER|M.V\.|MV\s|GENERAL CARGO|MULTIPURPOSE|HEAVY LIFT|REEFER|CEMENT|TIMBER|LOG/i.test(name)) return 'cargo';
+  if (/CRUISE|FERRY|PASSENGER|YACHT|SPEEDBOAT|DHOW/i.test(name)) return 'passenger';
+  if (/USS|USNS|HMS|INS|JS |PLAN|ROKS|TCG|CGC|PATROL|GUARD|NAVY|MILITARY|WARSHIP|FRIGATE|DESTROYER|CORVETTE|MINE|SUBMARINE|IRIS|IRIN|IRGN/i.test(name)) return 'military';
+  // Persian Gulf specific: many vessels with numeric/call-sign names are tankers or cargo
+  if (/^[A-Z]{2,4}\d{4,}$/.test(name) || /^V7C|^V7F|^4HM|^4HA|^4HB/i.test(name)) return 'other';
   return 'other';
 }
 
@@ -59,11 +62,13 @@ export class HormuzTrafficPanel extends Panel {
   private tooltipEl: HTMLElement | null = null;
   private map: maplibregl.Map | null = null;
   private statsEl: HTMLElement | null = null;
+  private noDataEl: HTMLElement | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private mapLoaded = false;
   private didFit = false;
   private vessels: AisPositionData[] = [];
   private points: VesselPoint[] = [];
+  private lastDataTime = 0;
 
   constructor(_mc?: MapContainer) {
     super({
@@ -74,7 +79,8 @@ export class HormuzTrafficPanel extends Panel {
       infoTooltip: `<strong>Strait of Hormuz Traffic</strong>
         Real-time vessel positions via AIS.
         <ul><li>Orange = Tankers</li><li>Teal = Cargo</li><li>Blue = Passenger</li>
-        <li>Purple = Military</li><li>Yellow = Other</li></ul>`,
+        <li>Purple = Military</li><li>Yellow = Other</li></ul>
+        <br><em>Data source: AISStream.io (terrestrial + satellite AIS). Coverage in the Persian Gulf may vary.</em>`,
     });
     this.getElement().classList.add('col-span-2', 'span-3', 'resized');
     this.init();
@@ -90,6 +96,10 @@ export class HormuzTrafficPanel extends Panel {
 
   private onHormuzData = (vessels: AisPositionData[]): void => {
     this.vessels = vessels;
+    this.lastDataTime = Date.now();
+    if (this.noDataEl && vessels.length > 0) {
+      this.noDataEl.style.display = 'none';
+    }
     if (this.mapLoaded) {
       if (!this.didFit && vessels.length > 0) {
         this.didFit = true;
@@ -129,6 +139,12 @@ export class HormuzTrafficPanel extends Panel {
 
     this.statsEl = document.createElement('div');
     this.statsEl.className = 'hormuz-traffic-stats';
+
+    // No-data overlay
+    this.noDataEl = document.createElement('div');
+    this.noDataEl.className = 'hormuz-no-data';
+    this.noDataEl.textContent = t('panels.hormuzNoData') || 'Waiting for vessel data...';
+    this.mapWrap.appendChild(this.noDataEl);
 
     this.content.innerHTML = '';
     this.content.appendChild(this.mapWrap);
@@ -206,7 +222,17 @@ export class HormuzTrafficPanel extends Panel {
     ctx.clearRect(0, 0, w, h);
 
     const vs = this.vessels;
-    if (vs.length === 0) return;
+    if (vs.length === 0) {
+      // Show waiting message
+      if (this.noDataEl) {
+        const noAis = !isAisConfigured();
+        this.noDataEl.textContent = noAis
+          ? (t('panels.hormuzAisNotConfigured') || 'AIS data not configured')
+          : (t('panels.hormuzNoData') || 'Waiting for vessel data...');
+        this.noDataEl.style.display = 'block';
+      }
+      return;
+    }
 
     const zoom = this.map.getZoom();
     const dotR = Math.max(3, Math.min(7, zoom - 2));
@@ -222,10 +248,10 @@ export class HormuzTrafficPanel extends Panel {
 
       this.points.push({ x: pt.x, y: pt.y, data: v, category });
 
-      // Glow
+      // Outer glow
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, dotR + 5, 0, Math.PI * 2);
-      ctx.fillStyle = color.slice(0, 7) + '30';
+      ctx.arc(pt.x, pt.y, dotR + 4, 0, Math.PI * 2);
+      ctx.fillStyle = color + '25';
       ctx.fill();
 
       // Dot
@@ -234,10 +260,16 @@ export class HormuzTrafficPanel extends Panel {
       ctx.fillStyle = color;
       ctx.fill();
 
+      // Bright center
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, dotR * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff80';
+      ctx.fill();
+
       // Heading line
       if (v.heading != null && v.heading !== 511 && v.speed != null && v.speed > 0.5) {
         const rad = ((v.heading - 90) * Math.PI) / 180;
-        const len = dotR + 5;
+        const len = dotR + 6;
         ctx.beginPath();
         ctx.moveTo(pt.x, pt.y);
         ctx.lineTo(pt.x + Math.cos(rad) * len, pt.y + Math.sin(rad) * len);
@@ -317,6 +349,11 @@ export class HormuzTrafficPanel extends Panel {
     const tc = stats.trend === 'up' ? '#ff6b35' : stats.trend === 'down' ? '#4ecdc4' : '#94a3b8';
     const cc = `hormuz-congestion-${stats.congestion}`;
     const cl = t(`panels.hormuzCongestion.${stats.congestion}`) || stats.congestion;
+    const dataAge = this.lastDataTime ? Date.now() - this.lastDataTime : -1;
+    const stale = dataAge > 60000;
+    const timeStr = stale && this.lastDataTime
+      ? `Last update: ${Math.round(dataAge / 1000)}s ago`
+      : `Updated ${new Date(stats.lastUpdate).toLocaleTimeString()}`;
 
     this.statsEl.innerHTML = `
       <div class="hormuz-stats-row">
@@ -326,8 +363,9 @@ export class HormuzTrafficPanel extends Panel {
       <div class="hormuz-stats-breakdown">
         ${this.chip('tanker', stats.tankers)}${this.chip('cargo', stats.cargo)}
         ${this.chip('passenger', stats.passenger)}${this.chip('military', stats.military)}
+        ${stats.other > 0 ? this.chip('other', stats.other) : ''}
       </div>
-      <div class="hormuz-stats-time">Updated ${new Date(stats.lastUpdate).toLocaleTimeString()}</div>`;
+      <div class="hormuz-stats-time" ${stale ? 'style="color:var(--semantic-elevated)"' : ''}>${timeStr} · AISStream.io</div>`;
   }
 
   private chip(type: string, count: number): string {

@@ -11,12 +11,12 @@ import {
   type AisPositionData,
 } from './ais';
 
-// Strait of Hormuz bounding box
+// Strait of Hormuz bounding box (extended to cover Persian Gulf approaches)
 const HORMUZ_BOUNDS = {
-  north: 27.5,
-  south: 24.5,
-  west: 54.5,
-  east: 58.5,
+  north: 28.5,
+  south: 24.0,
+  west: 52.0,
+  east: 58.0,
   center: { lat: 26.5, lon: 56.5 },
 };
 
