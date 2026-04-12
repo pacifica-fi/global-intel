@@ -55,7 +55,7 @@ const GAP_THRESHOLD = 60 * 60 * 1000; // 1 hour
 const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTERVAL_MS || 5000));
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
-const MAX_CANDIDATE_REPORTS = 1500;
+const MAX_CANDIDATE_REPORTS = 4000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
@@ -327,9 +327,15 @@ function calculateDensityZones() {
 }
 
 function getCandidateReportsSnapshot() {
-  return Array.from(candidateReports.values())
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, MAX_CANDIDATE_REPORTS);
+  const all = Array.from(candidateReports.values());
+  // Prioritize vessels near chokepoints (Hormuz, Malacca, etc.)
+  const nearChoke = all.filter(v => isNearChokepoint(v.lat, v.lon));
+  const rest = all.filter(v => !isNearChokepoint(v.lat, v.lon));
+  const prioritized = [
+    ...nearChoke.sort((a, b) => b.timestamp - a.timestamp),
+    ...rest.sort((a, b) => b.timestamp - a.timestamp),
+  ];
+  return prioritized.slice(0, MAX_CANDIDATE_REPORTS);
 }
 
 function buildSnapshot() {

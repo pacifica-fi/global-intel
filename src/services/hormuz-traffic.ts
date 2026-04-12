@@ -14,9 +14,9 @@ import {
 // Strait of Hormuz bounding box
 const HORMUZ_BOUNDS = {
   north: 27.5,
-  south: 25.0,
-  west: 55.5,
-  east: 57.5,
+  south: 24.5,
+  west: 54.5,
+  east: 58.5,
   center: { lat: 26.5, lon: 56.5 },
 };
 
