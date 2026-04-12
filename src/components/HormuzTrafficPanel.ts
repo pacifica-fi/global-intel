@@ -99,28 +99,29 @@ export class HormuzTrafficPanel extends Panel {
       this.contentEl.innerHTML = `<div class="hormuz-loading">${wrapper.error ?? 'No data'}</div>`;
       return;
     }
+    const safe = (fn: () => string) => { try { return fn(); } catch { return '<div class="hq-dim">Error</div>'; } };
     this.contentEl.innerHTML = `
       <div class="hormuz-quadrant">
-        ${this.qStatusTraffic(d)}
+        ${safe(() => this.qStatusTraffic(d))}
       </div>
       <div class="hormuz-quadrant">
-        ${this.qInsuranceImpact(d)}
+        ${safe(() => this.qInsuranceImpact(d))}
       </div>
       <div class="hormuz-quadrant">
-        ${this.qDiplomacyTimeline(d)}
+        ${safe(() => this.qDiplomacyTimeline(d))}
       </div>
       <div class="hormuz-quadrant">
-        ${this.qRoutesNews(d, wrapper.fetchedAt)}
+        ${safe(() => this.qRoutesNews(d, wrapper.fetchedAt))}
       </div>
     `;
   }
 
   // ---- Quadrant 1: Strait Status + Traffic + Oil Price ----
   private qStatusTraffic(d: HormuzDashboardData): string {
-    const s = d.straitStatus;
-    const sc = d.shipCount;
-    const op = d.oilPrice;
-    const th = d.throughput;
+    const s = d.straitStatus ?? { status: 'UNKNOWN', since: '', description: '' };
+    const sc = d.shipCount ?? { currentTransits: 0, last24h: 0, normalDaily: 0, percentOfNormal: 0 };
+    const op = d.oilPrice ?? { brentPrice: 0, change24h: 0, changePercent24h: 0, sparkline: [] };
+    const th = d.throughput ?? { todayDWT: 0, averageDWT: 0, percentOfNormal: 0, last7Days: [] };
     const color = stColor(s.status);
     const pctColor = (sc.percentOfNormal > 70) ? '#4ecdc4' : (sc.percentOfNormal > 30) ? '#fbbf24' : '#ff6b35';
     const priceUp = op.change24h >= 0;
@@ -172,12 +173,12 @@ export class HormuzTrafficPanel extends Panel {
 
   // ---- Quadrant 2: Insurance + Trade Impact + Supply Chain ----
   private qInsuranceImpact(d: HormuzDashboardData): string {
-    const ins = d.insurance;
-    const gti = d.globalTradeImpact;
-    const sci = gti.supplyChainImpact;
-    const lng = gti.lngImpact;
+    const ins = d.insurance ?? { level: 'UNKNOWN', warRiskPercent: 0, normalPercent: 0, multiplier: 0 };
+    const gti = d.globalTradeImpact ?? { percentOfWorldOilAtRisk: 0, estimatedDailyCostBillions: 0, affectedRegions: [], lngImpact: { percentOfWorldLngAtRisk: 0, estimatedLngDailyCostBillions: 0, topAffectedImporters: [], description: '' }, alternativeRoutes: [], supplyChainImpact: { shippingRateIncreasePercent: 0, consumerPriceImpactPercent: 0, sprStatusDays: 0, keyDisruptions: [] } };
+    const sci = gti.supplyChainImpact ?? { shippingRateIncreasePercent: 0, consumerPriceImpactPercent: 0, sprStatusDays: 0, keyDisruptions: [] };
+    const lng = gti.lngImpact ?? { percentOfWorldLngAtRisk: 0, estimatedLngDailyCostBillions: 0, topAffectedImporters: [], description: '' };
     const insColor = (ins.level.toUpperCase() === 'EXTREME') ? '#ef4444' : (ins.level.toUpperCase() === 'HIGH') ? '#ff6b35' : '#fbbf24';
-    const sv = d.strandedVessels;
+    const sv = d.strandedVessels ?? { total: 0, tankers: 0, bulk: 0, other: 0, changeToday: 0 };
 
     return `
       <div class="hq-title">Insurance &amp; Trade Impact</div>
@@ -229,9 +230,9 @@ export class HormuzTrafficPanel extends Panel {
 
   // ---- Quadrant 3: Diplomacy + Crisis Timeline ----
   private qDiplomacyTimeline(d: HormuzDashboardData): string {
-    const dip = d.diplomacy;
+    const dip = d.diplomacy ?? { status: '', headline: '', date: '', parties: [], summary: '' };
     const events = d.crisisTimeline?.events ?? [];
-    const dipColor = (dip.status === 'IN PROGRESS') ? '#4ecdc4' : '#fbbf24';
+    const dipColor = (dip.status === 'IN PROGRESS' || dip.status === 'TALKS_IN_PROGRESS') ? '#4ecdc4' : '#fbbf24';
 
     return `
       <div class="hq-title">Diplomacy &amp; Timeline</div>
@@ -263,8 +264,8 @@ export class HormuzTrafficPanel extends Panel {
 
   // ---- Quadrant 4: Alternative Routes + News ----
   private qRoutesNews(d: HormuzDashboardData, fetchedAt: string): string {
-    const routes = d.globalTradeImpact.alternativeRoutes;
-    const news = d.news;
+    const routes = d.globalTradeImpact?.alternativeRoutes ?? [];
+    const news = d.news ?? [];
 
     return `
       <div class="hq-title">Routes &amp; News</div>
@@ -317,8 +318,9 @@ export class HormuzTrafficPanel extends Panel {
     return String(n);
   }
 
-  private esc(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  private esc(s: unknown): string {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   public override destroy(): void {
