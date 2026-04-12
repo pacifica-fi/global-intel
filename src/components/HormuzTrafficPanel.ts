@@ -15,6 +15,7 @@ import {
   type HormuzTrafficStats,
 } from '@/services/hormuz-traffic';
 import { isAisConfigured } from '@/services/ais';
+import type { MapContainer } from './MapContainer';
 
 // Map center and zoom for the Strait of Hormuz
 const MAP_CENTER: [number, number] = [56.2, 26.2]; // [lon, lat] — shifted toward the strait
@@ -45,7 +46,7 @@ export class HormuzTrafficPanel extends Panel {
   private mapReady = false;
   private hormuzMapId: string;
 
-  constructor(mapContainer?: MapContainer) {
+  constructor(_mapContainer?: MapContainer) {
     super({
       id: 'hormuz-traffic',
       title: t('panels.hormuzTraffic') || 'Strait of Hormuz Traffic',
@@ -302,8 +303,8 @@ export class HormuzTrafficPanel extends Panel {
     </span>`;
   }
 
-  public setMapContainer(mapContainer: MapContainer): void {
-    this._mainMapContainer = mapContainer;
+  public setMapContainer(_mapContainer: MapContainer): void {
+    // Kept for API compatibility
   }
 
   public override destroy(): void {
