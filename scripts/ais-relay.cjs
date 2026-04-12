@@ -55,7 +55,8 @@ const GAP_THRESHOLD = 60 * 60 * 1000; // 1 hour
 const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTERVAL_MS || 5000));
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
-const MAX_CANDIDATE_REPORTS = 4000;
+const HORMUZ_BOUNDS = { north: 28, south: 23, west: 52, east: 60 };
+const MAX_HORMUZ_VESSELS = 2000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
@@ -335,7 +336,19 @@ function getCandidateReportsSnapshot() {
     ...nearChoke.sort((a, b) => b.timestamp - a.timestamp),
     ...rest.sort((a, b) => b.timestamp - a.timestamp),
   ];
-  return prioritized.slice(0, MAX_CANDIDATE_REPORTS);
+  return prioritized.slice(0, 4000);
+}
+
+function getHormuzVesselsSnapshot() {
+  const result = [];
+  for (const v of vessels.values()) {
+    if (v.lat >= HORMUZ_BOUNDS.south && v.lat <= HORMUZ_BOUNDS.north &&
+        v.lon >= HORMUZ_BOUNDS.west && v.lon <= HORMUZ_BOUNDS.east) {
+      result.push(v);
+      if (result.length >= MAX_HORMUZ_VESSELS) break;
+    }
+  }
+  return result;
 }
 
 function buildSnapshot() {
@@ -1070,10 +1083,14 @@ const server = http.createServer(async (req, res) => {
     connectUpstream();
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
+    const includeHormuz = url.searchParams.get('hormuz') === 'true';
     const snapshot = buildSnapshot();
     const payload = includeCandidates
       ? { ...snapshot, candidateReports: getCandidateReportsSnapshot() }
       : { ...snapshot, candidateReports: [] };
+    if (includeHormuz) {
+      payload.hormuzVessels = getHormuzVesselsSnapshot();
+    }
 
     sendCompressed(req, res, 200, {
       'Content-Type': 'application/json',

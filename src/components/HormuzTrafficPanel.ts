@@ -1,43 +1,71 @@
 /**
  * Strait of Hormuz Traffic Panel
- * MapLibre GL basemap + canvas overlay for vessel markers.
+ * MapLibre GL basemap + canvas overlay for vessel dots with hover tooltips.
  */
 import maplibregl from 'maplibre-gl';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import {
   initHormuzTracking,
-  getHormuzVessels,
   getHormuzStats,
   disconnectHormuzTracking,
-  type HormuzVessel,
   type HormuzTrafficStats,
 } from '@/services/hormuz-traffic';
+import {
+  registerHormuzCallback,
+  unregisterHormuzCallback,
+  type AisPositionData,
+} from '@/services/ais';
 import { isAisConfigured } from '@/services/ais';
 import type { MapContainer } from './MapContainer';
 
 const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
-const VESSEL_COLORS: Record<string, string> = {
+const COLORS: Record<string, string> = {
   tanker: '#ff6b35',
   cargo: '#4ecdc4',
   passenger: '#45b7d1',
   military: '#c084fc',
-  other: '#94a3b8',
+  other: '#fbbf24',
 };
+
+// Simplified vessel classification by name patterns
+function guessCategory(v: AisPositionData): string {
+  const name = (v.name || '').toUpperCase();
+  const st = v.shipType;
+  if (st != null) {
+    if (st === 35 || st === 55) return 'military';
+    if (st >= 80 && st <= 89) return 'tanker';
+    if (st >= 70 && st <= 79) return 'cargo';
+    if (st >= 60 && st <= 69) return 'passenger';
+  }
+  if (/TANKER|CRUDE|LNG|LPG|GAS|OIL|PRODUCT|NATURAL/i.test(name)) return 'tanker';
+  if (/CONTAINER|BULK|CARGO|CARRIER|FEEDER/i.test(name)) return 'cargo';
+  if (/CRUISE|FERRY|PASSENGER/i.test(name)) return 'passenger';
+  if (/USS|USNS|HMS|INS|JS |PLAN|ROKS|TCG|CGC|PATROL/i.test(name)) return 'military';
+  return 'other';
+}
+
+interface VesselPoint {
+  x: number;
+  y: number;
+  data: AisPositionData;
+  category: string;
+}
 
 export class HormuzTrafficPanel extends Panel {
   private mapWrap: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
+  private tooltipEl: HTMLElement | null = null;
   private map: maplibregl.Map | null = null;
   private statsEl: HTMLElement | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private mapLoaded = false;
   private didFit = false;
-  private currentVessels: HormuzVessel[] = [];
-  private dpr = 1;
+  private vessels: AisPositionData[] = [];
+  private points: VesselPoint[] = [];
 
-  constructor(_mapContainer?: MapContainer) {
+  constructor(_mc?: MapContainer) {
     super({
       id: 'hormuz-traffic',
       title: t('panels.hormuzTraffic') || 'Strait of Hormuz Traffic',
@@ -45,14 +73,9 @@ export class HormuzTrafficPanel extends Panel {
       trackActivity: true,
       infoTooltip: `<strong>Strait of Hormuz Traffic</strong>
         Real-time vessel positions via AIS.
-        <ul>
-          <li>Orange = Tankers</li>
-          <li>Teal = Cargo</li>
-          <li>Blue = Passenger</li>
-          <li>Purple = Military</li>
-        </ul>`,
+        <ul><li>Orange = Tankers</li><li>Teal = Cargo</li><li>Blue = Passenger</li>
+        <li>Purple = Military</li><li>Yellow = Other</li></ul>`,
     });
-
     this.getElement().classList.add('col-span-2', 'span-3', 'resized');
     this.init();
   }
@@ -60,28 +83,44 @@ export class HormuzTrafficPanel extends Panel {
   private init(): void {
     this.buildUI();
     if (isAisConfigured()) initHormuzTracking();
-    this.timer = setInterval(() => this.refresh(), 10_000);
-    setTimeout(() => this.refresh(), 2000);
+    registerHormuzCallback(this.onHormuzData);
+    this.timer = setInterval(() => this.drawStats(getHormuzStats()), 10_000);
+    setTimeout(() => this.drawStats(getHormuzStats()), 2000);
   }
+
+  private onHormuzData = (vessels: AisPositionData[]): void => {
+    this.vessels = vessels;
+    if (this.mapLoaded) {
+      if (!this.didFit && vessels.length > 0) {
+        this.didFit = true;
+        this.fitToVessels(vessels);
+      }
+      this.drawVessels();
+    }
+  };
 
   private buildUI(): void {
     this.mapWrap = document.createElement('div');
     this.mapWrap.className = 'hormuz-traffic-map';
 
-    // MapLibre container
     const mapEl = document.createElement('div');
     mapEl.className = 'hormuz-traffic-maplibre';
     this.mapWrap.appendChild(mapEl);
 
-    // Canvas overlay for vessel dots (on top of map tiles)
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'hormuz-vessel-canvas';
     this.mapWrap.appendChild(this.canvas);
 
+    // Tooltip
+    this.tooltipEl = document.createElement('div');
+    this.tooltipEl.className = 'hormuz-vessel-tooltip';
+    this.tooltipEl.style.display = 'none';
+    this.mapWrap.appendChild(this.tooltipEl);
+
     // Legend
     const legend = document.createElement('div');
     legend.className = 'hormuz-traffic-legend';
-    legend.innerHTML = Object.entries(VESSEL_COLORS)
+    legend.innerHTML = Object.entries(COLORS)
       .map(([type, color]) => {
         const label = t(`panels.hormuzVesselTypes.${type}`) || type;
         return `<span class="hormuz-legend-item"><span class="hormuz-legend-dot" style="background:${color}"></span>${label}</span>`;
@@ -95,6 +134,10 @@ export class HormuzTrafficPanel extends Panel {
     this.content.appendChild(this.mapWrap);
     this.content.appendChild(this.statsEl);
 
+    // Canvas mouse events for tooltip
+    this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    this.canvas.addEventListener('mouseleave', () => this.hideTooltip());
+
     requestAnimationFrame(() => this.createMap(mapEl));
   }
 
@@ -103,116 +146,89 @@ export class HormuzTrafficPanel extends Panel {
       const m = new maplibregl.Map({
         container: mapEl,
         style: DARK_STYLE,
-        center: [55.3, 25.3],
-        zoom: 8,
+        center: [56.0, 26.0],
+        zoom: 7,
         attributionControl: false,
         interactive: true,
         trackResize: true,
         minZoom: 4,
         maxZoom: 14,
       });
-
       m.on('load', () => {
         this.map = m;
         this.mapLoaded = true;
-        // Redraw vessels on every map move/zoom
         m.on('move', () => this.drawVessels());
         m.on('zoom', () => this.drawVessels());
-        this.refresh();
+        // Draw if data already arrived
+        if (this.vessels.length > 0) {
+          if (!this.didFit) {
+            this.didFit = true;
+            this.fitToVessels(this.vessels);
+          }
+          this.drawVessels();
+        }
       });
     } catch {
       mapEl.innerHTML = '<div class="hormuz-map-fallback">Map unavailable</div>';
     }
   }
 
-  private refresh(): void {
-    const stats = getHormuzStats();
-    const vessels = getHormuzVessels();
-    this.setCount(stats.total);
-    this.drawStats(stats);
-    this.currentVessels = vessels;
-
-    if (this.mapLoaded && this.map) {
-      // Auto-fit on first data
-      if (!this.didFit && vessels.length > 0) {
-        this.didFit = true;
-        this.fitToVessels(vessels);
-      }
-      this.drawVessels();
-
-      // No-data watermark
-      const noData = this.mapWrap?.querySelector('.hormuz-no-data');
-      if (vessels.length === 0 && !noData) {
-        const el = document.createElement('div');
-        el.className = 'hormuz-no-data';
-        el.textContent = isAisConfigured()
-          ? (t('panels.hormuzNoData') || 'Waiting for vessel data...')
-          : (t('panels.hormuzAisNotConfigured') || 'AIS not configured');
-        this.mapWrap?.appendChild(el);
-      } else if (vessels.length > 0 && noData) {
-        noData.remove();
-      }
-    }
-  }
-
-  private fitToVessels(vessels: HormuzVessel[]): void {
-    if (!this.map || vessels.length === 0) return;
-    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
-    for (const v of vessels) {
+  private fitToVessels(vs: AisPositionData[]): void {
+    if (!this.map || vs.length === 0) return;
+    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+    for (const v of vs) {
       if (v.lat < minLat) minLat = v.lat;
       if (v.lat > maxLat) maxLat = v.lat;
       if (v.lon < minLon) minLon = v.lon;
       if (v.lon > maxLon) maxLon = v.lon;
     }
-    const pad = 0.3;
     this.map.fitBounds(
-      [[minLon - pad, minLat - pad], [maxLon + pad, maxLat + pad]],
+      [[minLon - 0.3, minLat - 0.3], [maxLon + 0.3, maxLat + 0.3]],
       { padding: 30, duration: 500, maxZoom: 11 },
     );
   }
 
   private drawVessels(): void {
     if (!this.map || !this.canvas || !this.mapWrap) return;
-
-    const wrap = this.mapWrap;
-    const w = wrap.clientWidth;
-    const h = wrap.clientHeight;
+    const w = this.mapWrap.clientWidth;
+    const h = this.mapWrap.clientHeight;
     if (w === 0 || h === 0) return;
 
-    this.dpr = window.devicePixelRatio || 1;
-    this.canvas.width = w * this.dpr;
-    this.canvas.height = h * this.dpr;
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = w * dpr;
+    this.canvas.height = h * dpr;
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const vessels = this.currentVessels;
-    if (vessels.length === 0) return;
+    const vs = this.vessels;
+    if (vs.length === 0) return;
 
     const zoom = this.map.getZoom();
-    const dotR = Math.max(3.5, Math.min(7, zoom - 2));
-    const glowR = dotR + 5;
+    const dotR = Math.max(3, Math.min(7, zoom - 2));
 
-    for (const v of vessels) {
-      const pt = this.map.project({ lat: v.lat, lon: v.lon });
+    this.points = [];
+
+    for (const v of vs) {
+      const pt = this.map!.project({ lat: v.lat, lon: v.lon });
       if (pt.x < -50 || pt.x > w + 50 || pt.y < -50 || pt.y > h + 50) continue;
 
-      const color = VESSEL_COLORS[v.category] || VESSEL_COLORS.other!;
+      const category = guessCategory(v);
+      const color = COLORS[category] || COLORS.other!;
 
-      // Glow — radial gradient from color to transparent
+      this.points.push({ x: pt.x, y: pt.y, data: v, category });
+
+      // Glow
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, glowR, 0, Math.PI * 2);
-      const grad = ctx.createRadialGradient(pt.x, pt.y, dotR * 0.5, pt.x, pt.y, glowR);
-      grad.addColorStop(0, color + '80'); // 50% alpha via hex
-      grad.addColorStop(1, color + '00'); // 0% alpha
-      ctx.fillStyle = grad;
+      ctx.arc(pt.x, pt.y, dotR + 5, 0, Math.PI * 2);
+      ctx.fillStyle = color.slice(0, 7) + '30';
       ctx.fill();
 
-      // Solid colored dot
+      // Dot
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
       ctx.fillStyle = color;
@@ -221,7 +237,7 @@ export class HormuzTrafficPanel extends Panel {
       // Heading line
       if (v.heading != null && v.heading !== 511 && v.speed != null && v.speed > 0.5) {
         const rad = ((v.heading - 90) * Math.PI) / 180;
-        const len = dotR + 6;
+        const len = dotR + 5;
         ctx.beginPath();
         ctx.moveTo(pt.x, pt.y);
         ctx.lineTo(pt.x + Math.cos(rad) * len, pt.y + Math.sin(rad) * len);
@@ -232,36 +248,92 @@ export class HormuzTrafficPanel extends Panel {
     }
   }
 
+  private onMouseMove(e: MouseEvent): void {
+    const rect = this.canvas!.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    let closest: VesselPoint | null = null;
+    let minDist = 20; // 20px hover radius
+    for (const p of this.points) {
+      const d = Math.sqrt((p.x - mx) ** 2 + (p.y - my) ** 2);
+      if (d < minDist) {
+        minDist = d;
+        closest = p;
+      }
+    }
+
+    if (closest) {
+      this.showTooltip(closest, mx, my);
+    } else {
+      this.hideTooltip();
+    }
+  }
+
+  private showTooltip(vp: VesselPoint, mx: number, my: number): void {
+    if (!this.tooltipEl) return;
+    const v = vp.data;
+    const color = COLORS[vp.category] || COLORS.other!;
+    const name = v.name || v.mmsi;
+    const speed = v.speed != null ? `${v.speed.toFixed(1)} kn` : '--';
+    const heading = v.heading != null && v.heading !== 511 ? `${Math.round(v.heading)}°` : '--';
+    const category = t(`panels.hormuzVesselTypes.${vp.category}`) || vp.category;
+
+    this.tooltipEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>
+        <strong>${this.esc(name)}</strong>
+      </div>
+      <div class="hormuz-tt-row">Type: ${category}</div>
+      <div class="hormuz-tt-row">MMSI: ${v.mmsi}</div>
+      <div class="hormuz-tt-row">Speed: ${speed} | Hdg: ${heading}</div>
+      <div class="hormuz-tt-row">${v.lat.toFixed(4)}°N, ${v.lon.toFixed(4)}°E</div>
+    `;
+    this.tooltipEl.style.display = 'block';
+
+    // Position tooltip near cursor
+    const wrap = this.mapWrap!;
+    const ttW = 180;
+    let left = mx + 12;
+    let top = my - 10;
+    if (left + ttW > wrap.clientWidth) left = mx - ttW - 12;
+    if (top < 0) top = my + 12;
+    this.tooltipEl.style.left = `${left}px`;
+    this.tooltipEl.style.top = `${top}px`;
+  }
+
+  private hideTooltip(): void {
+    if (this.tooltipEl) this.tooltipEl.style.display = 'none';
+  }
+
+  private esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   private drawStats(stats: HormuzTrafficStats): void {
     if (!this.statsEl) return;
-    const trendIcon = stats.trend === 'up' ? '▲' : stats.trend === 'down' ? '▼' : '●';
-    const trendColor = stats.trend === 'up' ? '#ff6b35' : stats.trend === 'down' ? '#4ecdc4' : '#94a3b8';
+    this.setCount(stats.total);
+    const ti = stats.trend === 'up' ? '▲' : stats.trend === 'down' ? '▼' : '●';
+    const tc = stats.trend === 'up' ? '#ff6b35' : stats.trend === 'down' ? '#4ecdc4' : '#94a3b8';
     const cc = `hormuz-congestion-${stats.congestion}`;
     const cl = t(`panels.hormuzCongestion.${stats.congestion}`) || stats.congestion;
 
     this.statsEl.innerHTML = `
       <div class="hormuz-stats-row">
         <span class="hormuz-stat-chip ${cc}">${cl}</span>
-        <span class="hormuz-stat-total">
-          ${stats.total} vessels
-          <span class="hormuz-trend" style="color:${trendColor}">${trendIcon}</span>
-        </span>
+        <span class="hormuz-stat-total">${stats.total} vessels <span class="hormuz-trend" style="color:${tc}">${ti}</span></span>
       </div>
       <div class="hormuz-stats-breakdown">
-        ${this.chip('tanker', stats.tankers)}
-        ${this.chip('cargo', stats.cargo)}
-        ${this.chip('passenger', stats.passenger)}
-        ${this.chip('military', stats.military)}
+        ${this.chip('tanker', stats.tankers)}${this.chip('cargo', stats.cargo)}
+        ${this.chip('passenger', stats.passenger)}${this.chip('military', stats.military)}
       </div>
-      <div class="hormuz-stats-time">
-        Updated ${new Date(stats.lastUpdate).toLocaleTimeString()}
-      </div>`;
+      <div class="hormuz-stats-time">Updated ${new Date(stats.lastUpdate).toLocaleTimeString()}</div>`;
   }
 
   private chip(type: string, count: number): string {
-    const color = VESSEL_COLORS[type];
-    const label = t(`panels.hormuzVesselTypes.${type}`) || type;
-    return `<span class="hormuz-type-chip"><span class="hormuz-type-dot" style="background:${color}"></span>${label} <strong>${count}</strong></span>`;
+    const c = COLORS[type];
+    const l = t(`panels.hormuzVesselTypes.${type}`) || type;
+    return `<span class="hormuz-type-chip"><span class="hormuz-type-dot" style="background:${c}"></span>${l} <strong>${count}</strong></span>`;
   }
 
   public setMapContainer(_mc: MapContainer): void {}
@@ -269,6 +341,7 @@ export class HormuzTrafficPanel extends Panel {
   public override destroy(): void {
     super.destroy();
     if (this.timer) clearInterval(this.timer);
+    unregisterHormuzCallback(this.onHormuzData);
     if (this.map) { this.map.remove(); this.map = null; }
     disconnectHormuzTracking();
   }

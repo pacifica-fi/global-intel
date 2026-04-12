@@ -36,8 +36,29 @@
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 1;
+}
+
+.hormuz-vessel-tooltip {
+  position: absolute;
+  z-index: 3;
+  background: rgba(10, 15, 30, 0.92);
+  border: 1px solid rgba(100, 150, 200, 0.3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  pointer-events: none;
+  min-width: 160px;
+  max-width: 220px;
+  backdrop-filter: blur(4px);
+}
+
+.hormuz-tt-row {
+  color: var(--text-dim);
+  font-size: 10px;
 }
 
 .hormuz-map-fallback {

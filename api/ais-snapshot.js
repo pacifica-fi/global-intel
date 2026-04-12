@@ -102,7 +102,8 @@ export default async function handler(req) {
 
   const requestUrl = new URL(req.url);
   const includeCandidates = requestUrl.searchParams.get('candidates') === 'true';
-  const cacheKey = `ais-snapshot:${CACHE_VERSION}:${includeCandidates ? 'full' : 'lite'}`;
+  const includeHormuz = requestUrl.searchParams.get('hormuz') === 'true';
+  const cacheKey = `ais-snapshot:${CACHE_VERSION}:${includeCandidates ? 'full' : 'lite'}:${includeHormuz ? 'hz' : 'nohz'}`;
   const redisCached = await getCachedJson(cacheKey);
   if (isValidSnapshot(redisCached)) {
     setMemoryCachedSnapshot(cacheKey, redisCached);
@@ -145,7 +146,7 @@ export default async function handler(req) {
     let requestPromise = inFlightByKey.get(cacheKey);
     if (!requestPromise) {
       requestPromise = (async () => {
-        const upstreamUrl = `${relayBaseUrl}/ais/snapshot?candidates=${includeCandidates ? 'true' : 'false'}`;
+        const upstreamUrl = `${relayBaseUrl}/ais/snapshot?candidates=${includeCandidates ? 'true' : 'false'}${includeHormuz ? '&hormuz=true' : ''}`;
         const response = await fetch(upstreamUrl, {
           headers: { 'Accept': 'application/json' },
         });

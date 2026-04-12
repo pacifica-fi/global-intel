@@ -55,10 +55,13 @@ interface AisSnapshotResponse {
   disruptions?: AisDisruptionEvent[];
   density?: AisDensityZone[];
   candidateReports?: SnapshotCandidateReport[];
+  hormuzVessels?: AisPositionData[];
 }
 
 type AisCallback = (data: AisPositionData) => void;
+type HormuzCallback = (vessels: AisPositionData[]) => void;
 const positionCallbacks = new Set<AisCallback>();
+const hormuzCallbacks = new Set<HormuzCallback>();
 const lastCallbackTimestampByMmsi = new Map<string, number>();
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -76,7 +79,7 @@ let latestStatus: SnapshotStatus = {
 };
 
 function shouldIncludeCandidates(): boolean {
-  return positionCallbacks.size > 0;
+  return positionCallbacks.size > 0 || hormuzCallbacks.size > 0;
 }
 
 function parseSnapshot(data: unknown): {
@@ -85,6 +88,7 @@ function parseSnapshot(data: unknown): {
   disruptions: AisDisruptionEvent[];
   density: AisDensityZone[];
   candidateReports: SnapshotCandidateReport[];
+  hormuzVessels: AisPositionData[];
 } | null {
   if (!data || typeof data !== 'object') return null;
   const raw = data as AisSnapshotResponse;
@@ -102,11 +106,15 @@ function parseSnapshot(data: unknown): {
     disruptions: raw.disruptions,
     density: raw.density,
     candidateReports: Array.isArray(raw.candidateReports) ? raw.candidateReports : [],
+    hormuzVessels: Array.isArray(raw.hormuzVessels) ? raw.hormuzVessels : [],
   };
 }
 
-async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown> {
-  const query = `?candidates=${includeCandidates ? 'true' : 'false'}`;
+async function fetchSnapshotPayload(includeCandidates: boolean, includeHormuz: boolean): Promise<unknown> {
+  const params = new URLSearchParams();
+  params.set('candidates', includeCandidates ? 'true' : 'false');
+  if (includeHormuz) params.set('hormuz', 'true');
+  const query = `?${params.toString()}`;
 
   if (RAILWAY_SNAPSHOT_URL) {
     try {
@@ -194,7 +202,8 @@ async function pollSnapshot(force = false): Promise<void> {
   inFlight = true;
   try {
     const includeCandidates = shouldIncludeCandidates();
-    const payload = await fetchSnapshotPayload(includeCandidates);
+    const includeHormuz = hormuzCallbacks.size > 0;
+    const payload = await fetchSnapshotPayload(includeCandidates, includeHormuz);
     const snapshot = parseSnapshot(payload);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
@@ -213,6 +222,13 @@ async function pollSnapshot(force = false): Promise<void> {
       }
     } else {
       lastSequence = snapshot.sequence;
+    }
+
+    // Emit Hormuz-specific vessel data
+    if (includeHormuz && snapshot.hormuzVessels.length > 0) {
+      for (const cb of hormuzCallbacks) {
+        try { cb(snapshot.hormuzVessels); } catch { /* ignore */ }
+      }
     }
 
     const itemCount = latestDisruptions.length + latestDensity.length;
@@ -245,6 +261,15 @@ export function unregisterAisCallback(callback: AisCallback): void {
   if (positionCallbacks.size === 0) {
     lastCallbackTimestampByMmsi.clear();
   }
+}
+
+export function registerHormuzCallback(callback: HormuzCallback): void {
+  hormuzCallbacks.add(callback);
+  startPolling();
+}
+
+export function unregisterHormuzCallback(callback: HormuzCallback): void {
+  hormuzCallbacks.delete(callback);
 }
 
 export function initAisStream(): void {

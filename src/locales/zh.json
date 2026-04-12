@@ -136,7 +136,7 @@
       "cargo": "货船",
       "passenger": "客轮",
       "military": "军舰",
-      "other": "其他"
+      "other": "其他/未知"
     },
     "hormuzCongestion": {
       "normal": "正常",
