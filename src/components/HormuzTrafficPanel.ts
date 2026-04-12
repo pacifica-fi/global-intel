@@ -69,7 +69,7 @@ export class HormuzTrafficPanel extends Panel {
         <li>Diplomacy &amp; crisis timeline</li><li>Alternative routes &amp; latest news</li></ul>
         <br><em>Updated every 5 minutes.</em>`,
     });
-    this.getElement().classList.add('col-span-2', 'span-3', 'resized');
+    this.getElement().classList.add('col-span-2', 'span-2', 'resized');
     this.init();
   }
 
