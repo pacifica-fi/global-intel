@@ -120,7 +120,7 @@ export interface HormuzDashboardData {
   throughput: HormuzThroughput;
   diplomacy: HormuzDiplomacy;
   globalTradeImpact: HormuzGlobalTradeImpact;
-  crisisTimeline: HormuzTimelineEvent[];
+  crisisTimeline: { events: HormuzTimelineEvent[] };
   news: HormuzNewsItem[];
   lastUpdated: string;
 }

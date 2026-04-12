@@ -230,7 +230,7 @@ export class HormuzTrafficPanel extends Panel {
   // ---- Quadrant 3: Diplomacy + Crisis Timeline ----
   private qDiplomacyTimeline(d: HormuzDashboardData): string {
     const dip = d.diplomacy;
-    const events = d.crisisTimeline;
+    const events = d.crisisTimeline?.events ?? [];
     const dipColor = (dip.status === 'IN PROGRESS') ? '#4ecdc4' : '#fbbf24';
 
     return `
