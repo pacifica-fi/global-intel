@@ -10,17 +10,15 @@ import {
   initHormuzTracking,
   getHormuzVessels,
   getHormuzStats,
-  getHormuzCenter,
   disconnectHormuzTracking,
   type HormuzVessel,
   type HormuzTrafficStats,
 } from '@/services/hormuz-traffic';
 import { isAisConfigured } from '@/services/ais';
-import type { MapContainer } from './MapContainer';
 
 // Map center and zoom for the Strait of Hormuz
-const MAP_CENTER: [number, number] = [56.5, 26.5]; // [lon, lat]
-const MAP_ZOOM = 7.5;
+const MAP_CENTER: [number, number] = [56.2, 26.2]; // [lon, lat] — shifted toward the strait
+const MAP_ZOOM = 7.0;
 
 // CARTO dark basemap style (same as main map)
 const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -43,7 +41,6 @@ export class HormuzTrafficPanel extends Panel {
   private mapContainer: HTMLElement | null = null;
   private map: maplibregl.Map | null = null;
   private statsContainer: HTMLElement | null = null;
-  private mainMapContainer: MapContainer | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private mapReady = false;
   private hormuzMapId: string;
@@ -65,7 +62,6 @@ export class HormuzTrafficPanel extends Panel {
         Data from AISStream.io. Click map to fly to region.`,
     });
 
-    this.mainMapContainer = mapContainer ?? null;
     this.hormuzMapId = `hormuz-map-${Date.now()}`;
 
     // Default to 2x2 size
@@ -96,7 +92,6 @@ export class HormuzTrafficPanel extends Panel {
     this.mapContainer = document.createElement('div');
     this.mapContainer.id = this.hormuzMapId;
     this.mapContainer.className = 'hormuz-traffic-maplibre';
-    this.mapContainer.addEventListener('click', () => this.flyToHormuz());
     mapWrap.appendChild(this.mapContainer);
 
     // Legend overlay
@@ -132,17 +127,24 @@ export class HormuzTrafficPanel extends Panel {
         center: MAP_CENTER,
         zoom: MAP_ZOOM,
         attributionControl: false,
-        interactive: false, // Read-only mini-map; click flies the main map
+        interactive: true, // Allow scroll/pinch to zoom
         trackResize: true,
+        minZoom: 5,
+        maxZoom: 12,
         maxBounds: [
-          [54.5, 24.0], // SW
-          [58.5, 28.5], // NE
+          [53.0, 23.0], // SW
+          [60.0, 30.0], // NE
         ],
       });
 
       this.map.on('load', () => {
         this.mapReady = true;
         this.addVesselLayers();
+        // Fit to strait bounds so all vessels are visible
+        this.map!.fitBounds(
+          [[55.0, 25.0], [58.0, 27.5]],
+          { padding: 10, duration: 0 },
+        );
         this.refresh();
       });
     } catch {
@@ -170,8 +172,9 @@ export class HormuzTrafficPanel extends Panel {
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          6, 6,
-          10, 14,
+          5, 4,
+          8, 10,
+          12, 18,
         ] as any,
         'circle-color': [
           'match', ['get', 'category'],
@@ -193,8 +196,9 @@ export class HormuzTrafficPanel extends Panel {
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          6, 3,
-          10, 6,
+          5, 2.5,
+          8, 4,
+          12, 8,
         ] as any,
         'circle-color': [
           'match', ['get', 'category'],
@@ -298,14 +302,8 @@ export class HormuzTrafficPanel extends Panel {
     </span>`;
   }
 
-  private flyToHormuz(): void {
-    if (!this.mainMapContainer) return;
-    const center = getHormuzCenter();
-    this.mainMapContainer.setCenter(center.lat, center.lon, 8);
-  }
-
   public setMapContainer(mapContainer: MapContainer): void {
-    this.mainMapContainer = mapContainer;
+    this._mainMapContainer = mapContainer;
   }
 
   public override destroy(): void {
