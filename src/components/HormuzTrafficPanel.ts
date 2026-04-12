@@ -1,7 +1,6 @@
 /**
  * Strait of Hormuz Traffic Panel
- * Embedded MapLibre GL map with CARTO dark tiles.
- * Vessels rendered as circle markers via GeoJSON source.
+ * MapLibre GL basemap + canvas overlay for vessel markers.
  */
 import maplibregl from 'maplibre-gl';
 import { Panel } from './Panel';
@@ -18,9 +17,6 @@ import { isAisConfigured } from '@/services/ais';
 import type { MapContainer } from './MapContainer';
 
 const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const SRC_ID = 'hormuz-vessels-src';
-const DOT_LAYER = 'hormuz-vessels-dots';
-const GLOW_LAYER = 'hormuz-vessels-glow';
 
 const VESSEL_COLORS: Record<string, string> = {
   tanker: '#ff6b35',
@@ -30,13 +26,24 @@ const VESSEL_COLORS: Record<string, string> = {
   other: '#94a3b8',
 };
 
+const VESSEL_GLOW: Record<string, string> = {
+  tanker: 'rgba(255,107,53,0.30)',
+  cargo: 'rgba(78,205,196,0.30)',
+  passenger: 'rgba(69,183,209,0.30)',
+  military: 'rgba(192,132,252,0.30)',
+  other: 'rgba(148,163,184,0.20)',
+};
+
 export class HormuzTrafficPanel extends Panel {
-  private mapEl: HTMLElement | null = null;
+  private mapWrap: HTMLElement | null = null;
+  private canvas: HTMLCanvasElement | null = null;
   private map: maplibregl.Map | null = null;
   private statsEl: HTMLElement | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private mapLoaded = false;
   private didFit = false;
+  private currentVessels: HormuzVessel[] = [];
+  private dpr = 1;
 
   constructor(_mapContainer?: MapContainer) {
     super({
@@ -45,7 +52,7 @@ export class HormuzTrafficPanel extends Panel {
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>Strait of Hormuz Traffic</strong>
-        Real-time vessel positions via AIS in the Strait of Hormuz.
+        Real-time vessel positions via AIS.
         <ul>
           <li>Orange = Tankers</li>
           <li>Teal = Cargo</li>
@@ -66,12 +73,18 @@ export class HormuzTrafficPanel extends Panel {
   }
 
   private buildUI(): void {
-    const wrap = document.createElement('div');
-    wrap.className = 'hormuz-traffic-map';
+    this.mapWrap = document.createElement('div');
+    this.mapWrap.className = 'hormuz-traffic-map';
 
-    this.mapEl = document.createElement('div');
-    this.mapEl.className = 'hormuz-traffic-maplibre';
-    wrap.appendChild(this.mapEl);
+    // MapLibre container
+    const mapEl = document.createElement('div');
+    mapEl.className = 'hormuz-traffic-maplibre';
+    this.mapWrap.appendChild(mapEl);
+
+    // Canvas overlay for vessel dots (on top of map tiles)
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'hormuz-vessel-canvas';
+    this.mapWrap.appendChild(this.canvas);
 
     // Legend
     const legend = document.createElement('div');
@@ -81,23 +94,22 @@ export class HormuzTrafficPanel extends Panel {
         const label = t(`panels.hormuzVesselTypes.${type}`) || type;
         return `<span class="hormuz-legend-item"><span class="hormuz-legend-dot" style="background:${color}"></span>${label}</span>`;
       }).join('');
-    wrap.appendChild(legend);
+    this.mapWrap.appendChild(legend);
 
     this.statsEl = document.createElement('div');
     this.statsEl.className = 'hormuz-traffic-stats';
 
     this.content.innerHTML = '';
-    this.content.appendChild(wrap);
+    this.content.appendChild(this.mapWrap);
     this.content.appendChild(this.statsEl);
 
-    requestAnimationFrame(() => this.createMap());
+    requestAnimationFrame(() => this.createMap(mapEl));
   }
 
-  private createMap(): void {
-    if (!this.mapEl) return;
+  private createMap(mapEl: HTMLElement): void {
     try {
       const m = new maplibregl.Map({
-        container: this.mapEl,
+        container: mapEl,
         style: DARK_STYLE,
         center: [55.3, 25.3],
         zoom: 8,
@@ -109,72 +121,15 @@ export class HormuzTrafficPanel extends Panel {
       });
 
       m.on('load', () => {
-        // Add source with a test point to verify rendering
-        m.addSource(SRC_ID, {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              properties: { category: 'tanker' },
-              geometry: { type: 'Point', coordinates: [55.3, 25.3] },
-            }],
-          },
-        });
-
-        // Find a good layer to insert before (first symbol/label layer)
-        const style = m.getStyle();
-        const layers = style?.layers ?? [];
-        let beforeId: string | undefined;
-        for (const layer of layers) {
-          if (layer.type === 'symbol') {
-            beforeId = layer.id;
-            break;
-          }
-        }
-
-        // Glow
-        m.addLayer({
-          id: GLOW_LAYER,
-          type: 'circle',
-          source: SRC_ID,
-          paint: {
-            'circle-radius': 8,
-            'circle-color': 'rgba(255,107,53,0.25)',
-            'circle-blur': 0.8,
-          },
-        }, beforeId);
-
-        // Dots
-        m.addLayer({
-          id: DOT_LAYER,
-          type: 'circle',
-          source: SRC_ID,
-          paint: {
-            'circle-radius': 4,
-            'circle-color': [
-              'match', ['get', 'category'],
-              'tanker', '#ff6b35',
-              'cargo', '#4ecdc4',
-              'passenger', '#45b7d1',
-              'military', '#c084fc',
-              '#94a3b8',
-            ] as any,
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': 'rgba(255,255,255,0.5)',
-          },
-        }, beforeId);
-
         this.map = m;
         this.mapLoaded = true;
-
-        // Now pull real data
+        // Redraw vessels on every map move/zoom
+        m.on('move', () => this.drawVessels());
+        m.on('zoom', () => this.drawVessels());
         this.refresh();
       });
     } catch {
-      if (this.mapEl) {
-        this.mapEl.innerHTML = '<div class="hormuz-map-fallback">Map unavailable</div>';
-      }
+      mapEl.innerHTML = '<div class="hormuz-map-fallback">Map unavailable</div>';
     }
   }
 
@@ -183,42 +138,28 @@ export class HormuzTrafficPanel extends Panel {
     const vessels = getHormuzVessels();
     this.setCount(stats.total);
     this.drawStats(stats);
+    this.currentVessels = vessels;
+
     if (this.mapLoaded && this.map) {
-      this.updateVessels(vessels);
-    }
-  }
+      // Auto-fit on first data
+      if (!this.didFit && vessels.length > 0) {
+        this.didFit = true;
+        this.fitToVessels(vessels);
+      }
+      this.drawVessels();
 
-  private updateVessels(vessels: HormuzVessel[]): void {
-    if (!this.map) return;
-
-    const features = vessels.map(v => ({
-      type: 'Feature' as const,
-      properties: { category: v.category },
-      geometry: { type: 'Point' as const, coordinates: [v.lon, v.lat] as [number, number] },
-    }));
-
-    const src = this.map.getSource(SRC_ID) as maplibregl.GeoJSONSource | undefined;
-    if (src) {
-      src.setData({ type: 'FeatureCollection', features });
-    }
-
-    // Auto-fit on first data
-    if (!this.didFit && vessels.length > 0) {
-      this.didFit = true;
-      this.fitToVessels(vessels);
-    }
-
-    // No-data watermark
-    const noData = this.mapEl?.querySelector('.hormuz-no-data');
-    if (vessels.length === 0 && !noData) {
-      const el = document.createElement('div');
-      el.className = 'hormuz-no-data';
-      el.textContent = isAisConfigured()
-        ? (t('panels.hormuzNoData') || 'Waiting for vessel data...')
-        : (t('panels.hormuzAisNotConfigured') || 'AIS not configured');
-      this.mapEl?.appendChild(el);
-    } else if (vessels.length > 0 && noData) {
-      noData.remove();
+      // No-data watermark
+      const noData = this.mapWrap?.querySelector('.hormuz-no-data');
+      if (vessels.length === 0 && !noData) {
+        const el = document.createElement('div');
+        el.className = 'hormuz-no-data';
+        el.textContent = isAisConfigured()
+          ? (t('panels.hormuzNoData') || 'Waiting for vessel data...')
+          : (t('panels.hormuzAisNotConfigured') || 'AIS not configured');
+        this.mapWrap?.appendChild(el);
+      } else if (vessels.length > 0 && noData) {
+        noData.remove();
+      }
     }
   }
 
@@ -236,6 +177,73 @@ export class HormuzTrafficPanel extends Panel {
       [[minLon - pad, minLat - pad], [maxLon + pad, maxLat + pad]],
       { padding: 30, duration: 500, maxZoom: 11 },
     );
+  }
+
+  private drawVessels(): void {
+    if (!this.map || !this.canvas || !this.mapWrap) return;
+
+    const wrap = this.mapWrap;
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    if (w === 0 || h === 0) return;
+
+    this.dpr = window.devicePixelRatio || 1;
+    this.canvas.width = w * this.dpr;
+    this.canvas.height = h * this.dpr;
+    this.canvas.style.width = `${w}px`;
+    this.canvas.style.height = `${h}px`;
+
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const vessels = this.currentVessels;
+    if (vessels.length === 0) return;
+
+    const zoom = this.map.getZoom();
+    // Scale dot size with zoom
+    const dotR = Math.max(2, Math.min(8, zoom - 3));
+    const glowR = dotR * 2.5;
+
+    for (const v of vessels) {
+      const pt = this.map.project({ lat: v.lat, lon: v.lon });
+      if (pt.x < -50 || pt.x > w + 50 || pt.y < -50 || pt.y > h + 50) continue;
+
+      const color = VESSEL_COLORS[v.category] || VESSEL_COLORS.other!;
+      const glow = VESSEL_GLOW[v.category] || VESSEL_GLOW.other!;
+
+      // Glow
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
+
+      // Dot
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // White ring
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Heading line
+      if (v.heading != null && v.heading !== 511 && v.speed != null && v.speed > 0.5) {
+        const rad = ((v.heading - 90) * Math.PI) / 180;
+        const len = dotR + 6;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y);
+        ctx.lineTo(pt.x + Math.cos(rad) * len, pt.y + Math.sin(rad) * len);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
   }
 
   private drawStats(stats: HormuzTrafficStats): void {
@@ -271,6 +279,7 @@ export class HormuzTrafficPanel extends Panel {
   }
 
   public setMapContainer(_mc: MapContainer): void {}
+
   public override destroy(): void {
     super.destroy();
     if (this.timer) clearInterval(this.timer);
