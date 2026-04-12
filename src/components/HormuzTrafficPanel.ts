@@ -74,9 +74,9 @@ export class HormuzTrafficPanel extends Panel {
   }
 
   private init(): void {
+    this.content.innerHTML = ''; // Clear base-class loading animation
     this.contentEl = document.createElement('div');
     this.contentEl.className = 'hormuz-grid';
-    this.contentEl.innerHTML = `<div class="hormuz-loading">${t('common.loading') || 'Loading...'}</div>`;
     this.content.appendChild(this.contentEl);
 
     initHormuzStatusTracking();
