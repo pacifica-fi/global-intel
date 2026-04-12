@@ -4,6 +4,7 @@
  * Replaces the previous MapLibre + canvas approach.
  */
 import { Panel } from './Panel';
+import type { MapContainer } from './MapContainer';
 import { t } from '@/services/i18n';
 import {
   initHormuzStatusTracking,
@@ -29,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function statusColor(state: string): string {
-  return STATUS_COLORS[state.toUpperCase()] || STATUS_COLORS.UNKNOWN;
+  return STATUS_COLORS[state.toUpperCase() as keyof typeof STATUS_COLORS] ?? STATUS_COLORS.UNKNOWN!;
 }
 
 export class HormuzTrafficPanel extends Panel {
@@ -37,7 +38,7 @@ export class HormuzTrafficPanel extends Panel {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastData: HormuzStatusData | null = null;
 
-  constructor() {
+  constructor(_mc?: MapContainer) {
     super({
       id: 'hormuz-traffic',
       title: t('panels.hormuzTraffic') || 'Strait of Hormuz Traffic',
