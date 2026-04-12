@@ -1,9 +1,10 @@
 /**
  * Strait of Hormuz Status Service
- * Fetches curated monitoring data directly from hormuzstraitmonitor.com/api/dashboard.
+ * Fetches curated monitoring data via /api/hormuz-status edge proxy
+ * which calls hormuzstraitmonitor.com/api/dashboard server-side (avoids CORS).
  */
 
-const API_URL = 'https://hormuzstraitmonitor.com/api/dashboard';
+const EDGE_API = '/api/hormuz-status';
 
 // --- API Response Types (match the dashboard JSON) ---
 
@@ -160,17 +161,18 @@ async function fetchDashboard(): Promise<HormuzStatusData> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetch(API_URL, {
+    const res = await fetch(EDGE_API, {
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (json?.success && json?.data) {
+    const data = await res.json();
+    // Edge function returns the dashboard data directly (already unwrapped from {success, data})
+    if (data?.lastUpdated) {
       return {
-        fetchedAt: json.data.lastUpdated || new Date().toISOString(),
-        data: json.data as HormuzDashboardData,
+        fetchedAt: data.lastUpdated,
+        data: data as HormuzDashboardData,
       };
     }
     throw new Error('Invalid response format');

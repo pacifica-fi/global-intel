@@ -4,23 +4,15 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getCachedJson, setCachedJson } from './_upstash-cache.js';
 import { recordCacheTelemetry } from './_cache-telemetry.js';
 
-const CACHE_TTL_SECONDS = 300; // 5 min at edge, relay caches 15 min
-const CACHE_VERSION = 'v1';
+const API_URL = 'https://hormuzstraitmonitor.com/api/dashboard';
+const CACHE_TTL_SECONDS = 300; // 5 min at edge
+const CACHE_VERSION = 'v2';
 const MEMORY_CACHE_MAX_AGE_MS = 10 * 60 * 1000; // 10 min stale fallback
 const memoryCache = new Map();
 let inFlight = null;
 
-function getRelayBaseUrl() {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl
-    .replace('wss://', 'https://')
-    .replace('ws://', 'http://')
-    .replace(/\/$/, '');
-}
-
 function isValid(data) {
-  return Boolean(data && typeof data === 'object' && data.fetchedAt);
+  return Boolean(data && typeof data === 'object' && data.lastUpdated);
 }
 
 export default async function handler(req) {
@@ -69,22 +61,16 @@ export default async function handler(req) {
     memoryCache.delete(cacheKey);
   }
 
-  const relayBaseUrl = getRelayBaseUrl();
-  if (!relayBaseUrl) {
-    return new Response(JSON.stringify({ error: 'Relay not configured' }), {
-      status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
-  }
-
   try {
     if (!inFlight) {
       inFlight = (async () => {
-        const upstreamUrl = `${relayBaseUrl}/hormuz-status`;
-        const response = await fetch(upstreamUrl, { headers: { 'Accept': 'application/json' } });
-        if (!response.ok) throw new Error(`Relay HTTP ${response.status}`);
-        const data = await response.json();
-        if (!isValid(data)) throw new Error('Invalid payload');
-        return data;
+        const response = await fetch(API_URL, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`API HTTP ${response.status}`);
+        const json = await response.json();
+        if (!json?.success || !json?.data) throw new Error('Invalid API response');
+        return json.data;
       })();
     }
     const data = await inFlight;
