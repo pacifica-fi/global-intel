@@ -148,7 +148,10 @@
       "high": "High"
     },
     "hormuzNoData": "Waiting for vessel data...",
-    "hormuzAisNotConfigured": "AIS not configured"
+    "hormuzAisNotConfigured": "AIS not configured",
+    "hormuzColName": "Vessel",
+    "hormuzColSpeed": "Speed",
+    "hormuzColHeading": "Hdg"
   },
   "modals": {
     "search": {

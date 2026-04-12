@@ -155,6 +155,78 @@
   text-align: right;
 }
 
+.hormuz-vessel-list {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+
+.hormuz-velist-header {
+  display: grid;
+  grid-template-columns: 1fr 60px 40px;
+  gap: 4px;
+  padding: 5px 12px;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.hormuz-velist-col:first-child {
+  padding-left: 14px;
+}
+
+.hormuz-vessel-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 40px;
+  gap: 4px;
+  padding: 4px 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+}
+
+.hormuz-vessel-row:hover {
+  background: var(--surface-hover);
+}
+
+.hormuz-vessel-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.hormuz-vessel-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hormuz-vessel-speed,
+.hormuz-vessel-heading {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.hormuz-velist-footer {
+  padding: 4px 12px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
 /* ----------------------------------------------------------
    Satellite Fires Panel
    ---------------------------------------------------------- */

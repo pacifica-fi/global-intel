@@ -144,7 +144,10 @@
       "high": "拥堵"
     },
     "hormuzNoData": "等待船只数据...",
-    "hormuzAisNotConfigured": "AIS 数据未配置"
+    "hormuzAisNotConfigured": "AIS 数据未配置",
+    "hormuzColName": "船只",
+    "hormuzColSpeed": "航速",
+    "hormuzColHeading": "航向"
   },
   "modals": {
     "search": {

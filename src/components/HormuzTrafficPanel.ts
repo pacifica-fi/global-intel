@@ -2,6 +2,7 @@
  * Strait of Hormuz Traffic Panel
  * Uses an embedded MapLibre GL map with CARTO dark tiles for accurate geography.
  * Vessels are rendered as circle markers with type-based colors.
+ * Includes a scrollable vessel list below the stats.
  */
 import maplibregl from 'maplibre-gl';
 import { Panel } from './Panel';
@@ -16,10 +17,6 @@ import {
 } from '@/services/hormuz-traffic';
 import { isAisConfigured } from '@/services/ais';
 import type { MapContainer } from './MapContainer';
-
-// Map center and zoom for the Strait of Hormuz
-const MAP_CENTER: [number, number] = [56.2, 26.2]; // [lon, lat] — shifted toward the strait
-const MAP_ZOOM = 7.0;
 
 // CARTO dark basemap style (same as main map)
 const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -38,13 +35,17 @@ const VESSEL_COLORS: Record<string, string> = {
   other: '#94a3b8',
 };
 
+const MAX_LIST_ITEMS = 20;
+
 export class HormuzTrafficPanel extends Panel {
   private mapContainer: HTMLElement | null = null;
   private map: maplibregl.Map | null = null;
   private statsContainer: HTMLElement | null = null;
+  private vesselListContainer: HTMLElement | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private mapReady = false;
   private hormuzMapId: string;
+  private hasFittedToVessels = false;
 
   constructor(_mapContainer?: MapContainer) {
     super({
@@ -60,13 +61,13 @@ export class HormuzTrafficPanel extends Panel {
           <li>Blue = Passenger vessels</li>
           <li>Purple = Military/Law enforcement</li>
         </ul>
-        Data from AISStream.io. Click map to fly to region.`,
+        Data from AISStream.io.`,
     });
 
     this.hormuzMapId = `hormuz-map-${Date.now()}`;
 
-    // Default to 2x2 size
-    this.getElement().classList.add('col-span-2', 'span-2', 'resized');
+    // Default to 2x3 size
+    this.getElement().classList.add('col-span-2', 'span-3', 'resized');
 
     this.init();
   }
@@ -110,9 +111,14 @@ export class HormuzTrafficPanel extends Panel {
     this.statsContainer = document.createElement('div');
     this.statsContainer.className = 'hormuz-traffic-stats';
 
+    // Vessel list
+    this.vesselListContainer = document.createElement('div');
+    this.vesselListContainer.className = 'hormuz-vessel-list';
+
     this.content.innerHTML = '';
     this.content.appendChild(mapWrap);
     this.content.appendChild(this.statsContainer);
+    this.content.appendChild(this.vesselListContainer);
 
     // Initialize MapLibre map
     requestAnimationFrame(() => this.initMap());
@@ -125,31 +131,25 @@ export class HormuzTrafficPanel extends Panel {
       this.map = new maplibregl.Map({
         container: this.mapContainer,
         style: DARK_STYLE,
-        center: MAP_CENTER,
-        zoom: MAP_ZOOM,
+        center: [55.3, 25.3], // Default to where most vessels cluster
+        zoom: 8,
         attributionControl: false,
-        interactive: true, // Allow scroll/pinch to zoom
+        interactive: true,
         trackResize: true,
-        minZoom: 5,
-        maxZoom: 12,
+        minZoom: 4,
+        maxZoom: 14,
         maxBounds: [
-          [53.0, 23.0], // SW
-          [60.0, 30.0], // NE
+          [50.0, 20.0], // SW
+          [65.0, 32.0], // NE
         ],
       });
 
       this.map.on('load', () => {
         this.mapReady = true;
         this.addVesselLayers();
-        // Fit to strait bounds so all vessels are visible
-        this.map!.fitBounds(
-          [[55.0, 25.0], [58.0, 27.5]],
-          { padding: 10, duration: 0 },
-        );
         this.refresh();
       });
     } catch {
-      // Fallback: show a simple message if WebGL not available
       if (this.mapContainer) {
         this.mapContainer.innerHTML = '<div class="hormuz-map-fallback">Map unavailable</div>';
       }
@@ -159,13 +159,12 @@ export class HormuzTrafficPanel extends Panel {
   private addVesselLayers(): void {
     if (!this.map || !this.mapReady) return;
 
-    // Add empty GeoJSON source for vessels
     this.map.addSource(VESSEL_SOURCE_ID, {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     });
 
-    // Glow layer (larger, transparent circles behind the dots)
+    // Glow layer
     this.map.addLayer({
       id: VESSEL_GLOW_LAYER_ID,
       type: 'circle',
@@ -173,19 +172,19 @@ export class HormuzTrafficPanel extends Panel {
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          5, 4,
-          8, 10,
-          12, 18,
+          6, 5,
+          9, 12,
+          14, 20,
         ] as any,
         'circle-color': [
           'match', ['get', 'category'],
-          'tanker', 'rgba(255,107,53,0.35)',
-          'cargo', 'rgba(78,205,196,0.35)',
-          'passenger', 'rgba(69,183,209,0.35)',
-          'military', 'rgba(192,132,252,0.35)',
-          'rgba(148,163,184,0.25)',
+          'tanker', 'rgba(255,107,53,0.30)',
+          'cargo', 'rgba(78,205,196,0.30)',
+          'passenger', 'rgba(69,183,209,0.30)',
+          'military', 'rgba(192,132,252,0.30)',
+          'rgba(148,163,184,0.20)',
         ] as any,
-        'circle-blur': 0.6,
+        'circle-blur': 0.7,
       },
     });
 
@@ -197,9 +196,9 @@ export class HormuzTrafficPanel extends Panel {
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          5, 2.5,
-          8, 4,
-          12, 8,
+          6, 3,
+          9, 5,
+          14, 10,
         ] as any,
         'circle-color': [
           'match', ['get', 'category'],
@@ -209,8 +208,12 @@ export class HormuzTrafficPanel extends Panel {
           'military', VESSEL_COLORS.military!,
           VESSEL_COLORS.other!,
         ] as any,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': 'rgba(255,255,255,0.3)',
+        'circle-stroke-width': [
+          'interpolate', ['linear'], ['zoom'],
+          6, 0.5,
+          10, 1.5,
+        ] as any,
+        'circle-stroke-color': 'rgba(255,255,255,0.4)',
       },
     });
   }
@@ -221,6 +224,7 @@ export class HormuzTrafficPanel extends Panel {
     this.setCount(stats.total);
     this.updateVessels(vessels);
     this.drawStats(stats);
+    this.drawVesselList(vessels);
   }
 
   private updateVessels(vessels: HormuzVessel[]): void {
@@ -249,6 +253,12 @@ export class HormuzTrafficPanel extends Panel {
       });
     }
 
+    // Auto-fit to vessel positions on first data arrival
+    if (!this.hasFittedToVessels && vessels.length > 0) {
+      this.hasFittedToVessels = true;
+      this.fitToVessels(vessels);
+    }
+
     // Show/hide "no data" watermark
     const noDataEl = this.mapContainer?.querySelector('.hormuz-no-data');
     if (vessels.length === 0 && !noDataEl) {
@@ -261,6 +271,28 @@ export class HormuzTrafficPanel extends Panel {
     } else if (vessels.length > 0 && noDataEl) {
       noDataEl.remove();
     }
+  }
+
+  private fitToVessels(vessels: HormuzVessel[]): void {
+    if (!this.map || vessels.length === 0) return;
+
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLon = Infinity, maxLon = -Infinity;
+    for (const v of vessels) {
+      if (v.lat < minLat) minLat = v.lat;
+      if (v.lat > maxLat) maxLat = v.lat;
+      if (v.lon < minLon) minLon = v.lon;
+      if (v.lon > maxLon) maxLon = v.lon;
+    }
+
+    // Add padding so vessels aren't at the edge
+    const latPad = Math.max((maxLat - minLat) * 0.3, 0.2);
+    const lonPad = Math.max((maxLon - minLon) * 0.3, 0.2);
+
+    this.map.fitBounds(
+      [[minLon - lonPad, minLat - latPad], [maxLon + lonPad, maxLat + latPad]],
+      { padding: 20, duration: 0, maxZoom: 10 },
+    );
   }
 
   private drawStats(stats: HormuzTrafficStats): void {
@@ -301,6 +333,51 @@ export class HormuzTrafficPanel extends Panel {
       <span class="hormuz-type-dot" style="background:${color}"></span>
       ${label} <strong>${count}</strong>
     </span>`;
+  }
+
+  private drawVesselList(vessels: HormuzVessel[]): void {
+    if (!this.vesselListContainer) return;
+
+    if (vessels.length === 0) {
+      this.vesselListContainer.innerHTML = '';
+      return;
+    }
+
+    const items = vessels
+      .sort((a, b) => (b.speed ?? 0) - (a.speed ?? 0))
+      .slice(0, MAX_LIST_ITEMS);
+
+    const rows = items.map((v) => {
+      const color = VESSEL_COLORS[v.category] ?? VESSEL_COLORS.other;
+      const name = v.name || v.mmsi;
+      const speed = v.speed != null ? `${v.speed.toFixed(1)} kn` : '--';
+      const heading = v.heading != null && v.heading !== 511 ? `${Math.round(v.heading)}°` : '--';
+      return `<div class="hormuz-vessel-row">
+        <span class="hormuz-vessel-dot" style="background:${color}"></span>
+        <span class="hormuz-vessel-name">${this.escHtml(name)}</span>
+        <span class="hormuz-vessel-speed">${speed}</span>
+        <span class="hormuz-vessel-heading">${heading}</span>
+      </div>`;
+    }).join('');
+
+    const remaining = vessels.length - MAX_LIST_ITEMS;
+    const footer = remaining > 0
+      ? `<div class="hormuz-velist-footer">+${remaining} more</div>`
+      : '';
+
+    this.vesselListContainer.innerHTML = `
+      <div class="hormuz-velist-header">
+        <span class="hormuz-velist-col">${t('panels.hormuzColName') || 'Vessel'}</span>
+        <span class="hormuz-velist-col">${t('panels.hormuzColSpeed') || 'Speed'}</span>
+        <span class="hormuz-velist-col">${t('panels.hormuzColHeading') || 'Hdg'}</span>
+      </div>
+      ${rows}
+      ${footer}
+    `;
+  }
+
+  private escHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   public setMapContainer(_mapContainer: MapContainer): void {
