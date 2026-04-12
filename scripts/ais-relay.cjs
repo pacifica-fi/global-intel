@@ -1145,6 +1145,320 @@ function startAishubPolling() {
   aishubInterval = setInterval(fetchAishubHormuz, AISHUB_POLL_INTERVAL_MS);
 }
 
+// ── Hormuz Strait Monitor scraper (hormuzstraitmonitor.com) ──
+const hormuzStatusCache = { data: null, timestamp: 0 };
+const HORMUZ_STATUS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
+let hormuzFetchInProgress = false;
+
+async function fetchHormuzStatus() {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const req = https.get('https://hormuzstraitmonitor.com/', {
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (compatible; GlobalIntel/1.0; +https://app.pacifica.fi)',
+      },
+      timeout: 30000,
+    }, (response) => {
+      // Follow redirects
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        const loc = response.headers.location;
+        const redirectUrl = loc.startsWith('http') ? loc : `https://hormuzstraitmonitor.com${loc}`;
+        response.resume();
+        return fetchHormuzRedirect(redirectUrl, 2).then(resolve).catch(reject);
+      }
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+  });
+}
+
+function fetchHormuzRedirect(url, remaining) {
+  if (remaining <= 0) return Promise.reject(new Error('Too many redirects'));
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; GlobalIntel/1.0)' },
+      timeout: 15000,
+    }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href;
+        return fetchHormuzRedirect(next, remaining - 1).then(resolve).catch(reject);
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+  });
+}
+
+function parseHormuzStatus(html) {
+  const result = {
+    fetchedAt: new Date().toISOString(),
+    status: null,
+    traffic: null,
+    warRisk: null,
+    lngImpact: null,
+    supplyChain: null,
+    alternativeRoutes: [],
+    crisisTimeline: [],
+    latestNews: [],
+    peaceTalks: null,
+  };
+
+  // Strait status — look for RESTRICTED/OPEN/CLOSED + date
+  const statusMatch = html.match(/class="[^"]*status[^"]*"[^>]*>([^<]+)/i) ||
+    html.match(/(RESTRICTED|OPEN|CLOSED)\s*(?:since|as\s+of)?\s*([\w\s,]+\d{4})/i);
+  if (statusMatch) {
+    const statusText = statusMatch[1] || statusMatch[0];
+    const upperText = statusText.toUpperCase();
+    if (upperText.includes('RESTRICTED')) result.status = { state: 'RESTRICTED', since: extractDate(statusText) || '' };
+    else if (upperText.includes('CLOSED')) result.status = { state: 'CLOSED', since: extractDate(statusText) || '' };
+    else result.status = { state: 'OPEN', since: '' };
+  }
+
+  // Duration counter
+  const durMatch = html.match(/(\d+)\s*days?\s*,?\s*(\d+)\s*hours?\s*,?\s*(\d+)\s*min/i);
+  if (durMatch) {
+    if (!result.status) result.status = { state: 'UNKNOWN', since: '' };
+    result.status.duration = { days: +durMatch[1], hours: +durMatch[2], minutes: +durMatch[3] };
+  }
+
+  // Extract structured numbers with context
+  const numberPatterns = [
+    // Transiting now
+    { regex: /(\d+)\s*vessels?\s*(?:transiting|transiting\s+now|currently)/i, field: 'transitingNow', group: 'traffic' },
+    // Last 24h
+    { regex: /(\d+)\s*(?:vessels?\s*)?(?:in\s+)?last\s*24h/i, field: 'last24h', group: 'traffic' },
+    // Normal average
+    { regex: /(\d+)\s*(?:vessels?\s*)?(?:daily\s*)?(?:normal|average|avg)/i, field: 'normalAvg', group: 'traffic' },
+    // Percentage of normal
+    { regex: /(\d+)%\s*(?:of\s*normal|capacity|throughput)/i, field: 'pctOfNormal', group: 'traffic' },
+    // DWT throughput
+    { regex: /([\d.]+[MB]?)\s*\/\s*([\d.]+[MB]?)\s*(?:DWT|dwt)/i, field: 'dwtThroughput', group: 'traffic' },
+    // Insurance premium
+    { regex: /(\d+(?:\.\d+)?)%\s*(?:premium|war\s*risk)/i, field: 'premium', group: 'warRisk' },
+    // Insurance level
+    { regex: /(?:EXTREME|HIGH|MODERATE|ELEVATED)/i, field: 'level', group: 'warRiskLevel' },
+    // Normal premium
+    { regex: /(?:normal|typical)\s*(?:rate|premium)\s*(?:of\s*)?(\d+(?:\.\d+)?)/i, field: 'normalPremium', group: 'warRisk' },
+    // Multiplier
+    { regex: /([\d.]+)x\s*(?:normal|baseline|typical)/i, field: 'multiplier', group: 'warRisk' },
+    // LNG at risk
+    { regex: /(\d+)%\s*(?:world\s*)?(?:LNG|liquefied)\s*(?:at\s*risk|affected)/i, field: 'lngPctAtRisk', group: 'lngImpact' },
+    // Daily cost
+    { regex: /\$([\d.]+)[BM]?\s*(?:billion|million)?\s*(?:daily|per\s*day)\s*cost/i, field: 'dailyCost', group: 'lngImpact' },
+    // Shipping rates increase
+    { regex: /\+?(\d+)%\s*(?:shipping|container|freight)\s*rates?/i, field: 'shippingRateIncrease', group: 'supplyChain' },
+    // CPI impact
+    { regex: /\+?([\d.]+)%\s*(?:CPI|inflation|consumer\s*price)\s*impact/i, field: 'cpiImpact', group: 'supplyChain' },
+    // SPR reserve
+    { regex: /(\d+)\s*(?:days?)\s*(?:SPR|strategic\s*petroleum|oil\s*reserve)/i, field: 'sprDays', group: 'supplyChain' },
+    // Supertanker rates
+    { regex: /\$([\d,]+[Kk]?)\s*[-–]\s*\$?([\d,]+[Kk]?)\s*\/?\s*day/i, field: 'supertankerRates', group: 'supplyChain' },
+    // Freighters stuck
+    { regex: /([\d,]+)\s*(?:freighters?|vessels?|ships?)\s*(?:stuck|stranded|delayed|waiting)/i, field: 'freightersStuck', group: 'supplyChain' },
+    // Cape of Good Hope
+    { regex: /Cape\s+of\s+Good\s+Hope\s*\([^)]*\+(\d+)\s*d/i, field: 'capeExtraDays', group: 'altRoute' },
+    { regex: /Cape\s+of\s+Good\s+Hope[^)]*\+\$([\d,]+[Kk]?)/i, field: 'capeExtraCost', group: 'altRoute' },
+  ];
+
+  for (const p of numberPatterns) {
+    const m = html.match(p.regex);
+    if (m) {
+      if (p.group === 'traffic') {
+        if (!result.traffic) result.traffic = {};
+        result.traffic[p.field] = isNaN(m[1]) ? m[1] : +m[1].replace(/,/g, '');
+      } else if (p.group === 'warRisk') {
+        if (!result.warRisk) result.warRisk = {};
+        result.warRisk[p.field] = isNaN(m[1]) ? m[1] : +m[1].replace(/,/g, '');
+      } else if (p.group === 'warRiskLevel') {
+        if (!result.warRisk) result.warRisk = {};
+        result.warRisk.level = m[0].trim();
+      } else if (p.group === 'lngImpact') {
+        if (!result.lngImpact) result.lngImpact = {};
+        result.lngImpact[p.field] = isNaN(m[1]) ? m[1] : +m[1].replace(/,/g, '');
+      } else if (p.group === 'supplyChain') {
+        if (!result.supplyChain) result.supplyChain = {};
+        result.supplyChain[p.field] = isNaN(m[1]) ? m[1] : +m[1].replace(/,/g, '');
+      } else if (p.group === 'altRoute') {
+        const existing = result.alternativeRoutes.find(r => r.name === 'Cape of Good Hope');
+        if (existing) {
+          if (p.field === 'capeExtraDays') existing.extraDays = +m[1];
+          if (p.field === 'capeExtraCost') existing.extraCost = m[1];
+        } else {
+          result.alternativeRoutes.push({
+            name: 'Cape of Good Hope',
+            ...(p.field === 'capeExtraDays' ? { extraDays: +m[1] } : {}),
+            ...(p.field === 'capeExtraCost' ? { extraCost: m[1] } : {}),
+          });
+        }
+      }
+    }
+  }
+
+  // Extract DWT throughput if matched
+  const dwtMatch = html.match(/([\d.]+[KMB]?)\s*\/\s*([\d.]+[KMB]?)\s*(?:million\s*)?(?:DWT|dwt)/i);
+  if (dwtMatch && result.traffic) {
+    result.traffic.dwtThroughput = `${dwtMatch[1]}M/${dwtMatch[2]}M`;
+  }
+
+  // War risk level from dedicated match
+  const warLevelMatch = html.match(/\b(EXTREME|CRITICAL|HIGH|SEVERE|MODERATE|ELEVATED)\b/i);
+  if (warLevelMatch && result.warRisk) {
+    result.warRisk.level = result.warRisk.level || warLevelMatch[1].toUpperCase();
+  }
+
+  // LNG importers at risk
+  const lngImportersMatch = html.match(/(?:Japan|South\s*Korea|India)[^.]*(?:at\s*risk|affected)/i);
+  if (lngImportersMatch && result.lngImpact) {
+    result.lngImpact.importersAtRisk = lngImportersMatch[0].trim();
+  }
+
+  // Alternative routes — pipeline coverage
+  const pipelineMatch = html.match(/(?:East-West|Petroline)\s*Pipeline[^)]*?(\d+\.?\d*)\s*[MB]\s*bbl/i);
+  if (pipelineMatch) {
+    result.alternativeRoutes.push({ name: 'East-West Pipeline', capacity: `${pipelineMatch[1]}M bbl/day` });
+  }
+  const adPipelineMatch = html.match(/(?:Abu\s*Dhabi|ADNOC)\s*Pipeline/i);
+  if (adPipelineMatch) {
+    result.alternativeRoutes.push({ name: 'Abu Dhabi Pipeline', status: 'Active bypass' });
+  }
+
+  // Pipeline coverage percentage
+  const coverageMatch = html.match(/(\d+)%\s*coverage/i);
+  if (coverageMatch && result.alternativeRoutes.length > 0) {
+    result.alternativeRoutes[result.alternativeRoutes.length - 1].coverage = `${coverageMatch[1]}%`;
+  }
+
+  // Carriers suspended
+  const carriersMatch = html.match(/(Maersk|MSC|CMA\s*CGM|Hapag-Lloyd)[^.]*(?:suspended|rerouted|avoiding)/gi);
+  if (carriersMatch) {
+    if (!result.supplyChain) result.supplyChain = {};
+    result.supplyChain.carriersSuspended = [...new Set(carriersMatch.map(c => c.replace(/\s+/g, ' ').trim()))];
+  }
+
+  // Crisis timeline events
+  const timelineRegex = /(?:Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April)\s+\d{1,2},?\s*\d{4}[^<]*(?:DIPLOMATIC|ESCALATION|MILITARY|POLITICAL|ECONOMIC|NAVAL)/gi;
+  const timelineMatches = html.match(timelineRegex);
+  if (timelineMatches) {
+    result.crisisTimeline = timelineMatches.slice(0, 20).map(entry => {
+      const dateMatch = entry.match(/((?:Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April)\s+\d{1,2},?\s*\d{4})/i);
+      const typeMatch = entry.match(/(DIPLOMATIC|ESCALATION|MILITARY|POLITICAL|ECONOMIC|NAVAL)/i);
+      return {
+        date: dateMatch ? dateMatch[1] : '',
+        type: typeMatch ? typeMatch[1] : 'EVENT',
+        description: entry.replace(/<[^>]+>/g, '').trim().substring(0, 200),
+      };
+    });
+  }
+
+  // Latest news headlines
+  const newsRegex = /<a[^>]*href="([^"]*)"[^>]*>([^<]{20,})<\/a>/gi;
+  let newsMatch;
+  const newsSet = new Set();
+  while ((newsMatch = newsRegex.exec(html)) !== null && result.latestNews.length < 15) {
+    const title = newsMatch[2].trim();
+    const href = newsMatch[1];
+    if (title.length < 20 || title.length > 200 || newsSet.has(title)) continue;
+    // Filter for news-like titles (not navigation, etc.)
+    if (/^(Home|About|Contact|Read more|Source|Share|Twitter|Facebook|LinkedIn)$/i.test(title)) continue;
+    newsSet.add(title);
+    result.latestNews.push({ title, url: href.startsWith('http') ? href : `https://hormuzstraitmonitor.com${href}` });
+  }
+
+  // Peace talks status
+  const peaceMatch = html.match(/(Peace\s*Talks?|Negotiations?)[^<]*(IN\s*PROGRESS|ONGOING|STALLED|SCHEDULED)/i) ||
+    html.match(/(IN\s*PROGRESS|ONGOING)[^<]*(?:peace|negotiat)/i);
+  if (peaceMatch) {
+    result.peaceTalks = { status: peaceMatch.includes('IN PROGRESS') ? 'IN PROGRESS' : peaceMatch[2] || 'UNKNOWN' };
+  }
+  const peaceLocation = html.match(/(?:Islamabad|Muscat|Doha|Baghdad|Vienna|Geneva)[^<]*(?:negotiat|talks|peace)/i);
+  if (peaceLocation && result.peaceTalks) {
+    result.peaceTalks.location = peaceLocation[0].match(/(Islamabad|Muscat|Doha|Baghdad|Vienna|Geneva)/i)?.[1] || '';
+  }
+  const peaceUsLead = html.match(/(?:VP|Vice\s*President)\s*(?:Vance|[A-Z][a-z]+)/i);
+  if (peaceUsLead && result.peaceTalks) {
+    result.peaceTalks.usLead = peaceUsLead[0].trim();
+  }
+  const peaceIranLead = html.match(/(?:Qalibaf|Zarif|[A-Z][a-z]+\s*(?:leading|heading)\s*Iran)/i);
+  if (peaceIranLead && result.peaceTalks) {
+    result.peaceTalks.iranLead = peaceIranLead[0].trim();
+  }
+
+  return result;
+}
+
+function extractDate(text) {
+  const m = text.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})/i) ||
+    text.match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+async function handleHormuzStatusRequest(req, res) {
+  const now = Date.now();
+
+  if (hormuzStatusCache.data && now - hormuzStatusCache.timestamp < HORMUZ_STATUS_CACHE_TTL_MS) {
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=900',
+      'X-Cache': 'HIT',
+    }, JSON.stringify(hormuzStatusCache.data));
+  }
+
+  if (hormuzStatusCache.data && !hormuzFetchInProgress) {
+    hormuzFetchInProgress = true;
+    fetchHormuzStatus()
+      .then(html => {
+        const data = parseHormuzStatus(html);
+        hormuzStatusCache.data = data;
+        hormuzStatusCache.timestamp = Date.now();
+        console.log('[Hormuz] Background refresh complete');
+      })
+      .catch(err => console.error('[Hormuz] Background refresh error:', err.message))
+      .finally(() => { hormuzFetchInProgress = false; });
+
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=300',
+      'X-Cache': 'STALE',
+    }, JSON.stringify(hormuzStatusCache.data));
+  }
+
+  if (hormuzFetchInProgress) {
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ fetchedAt: '', status: null, message: 'Fetch in progress' }));
+  }
+
+  try {
+    hormuzFetchInProgress = true;
+    console.log('[Hormuz] Cold fetch starting...');
+    const html = await fetchHormuzStatus();
+    const data = parseHormuzStatus(html);
+    hormuzStatusCache.data = data;
+    hormuzStatusCache.timestamp = Date.now();
+    hormuzFetchInProgress = false;
+    console.log('[Hormuz] Cold fetch complete');
+
+    sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=900',
+      'X-Cache': 'MISS',
+    }, JSON.stringify(data));
+  } catch (err) {
+    hormuzFetchInProgress = false;
+    console.error('[Hormuz] Fetch error:', err.message);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message, fetchedAt: '' }));
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const corsOrigin = getCorsOrigin(req);
   if (corsOrigin) {
@@ -1351,6 +1665,8 @@ const server = http.createServer(async (req, res) => {
     handleWorldBankRequest(req, res);
   } else if (req.url.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
+  } else if (req.url.startsWith('/hormuz-status')) {
+    handleHormuzStatusRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();

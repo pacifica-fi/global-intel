@@ -147,7 +147,46 @@
     "hormuzAisNotConfigured": "AIS 数据未配置",
     "hormuzColName": "船只",
     "hormuzColSpeed": "航速",
-    "hormuzColHeading": "航向"
+    "hormuzColHeading": "航向",
+    "hormuzStatus": {
+      "restricted": "受限通行",
+      "closed": "关闭",
+      "open": "开放",
+      "unknown": "未知"
+    },
+    "hormuzSince": "自",
+    "hormuzTransitingNow": "当前通行",
+    "hormuzLast24h": "过去24小时",
+    "hormuzNormalAvg": "正常均值",
+    "hormuzThroughput": "通行率",
+    "hormuzWarRisk": "战争风险保险",
+    "hormuzWarRiskLevel": {
+      "extreme": "极高",
+      "high": "高",
+      "moderate": "中等",
+      "elevated": "偏高"
+    },
+    "hormuzPremium": "保费",
+    "hormuzLngImpact": "LNG影响",
+    "hormuzWorldLng": "全球LNG受威胁",
+    "hormuzSupplyChain": "供应链",
+    "hormuzShippingRates": "运费涨幅",
+    "hormuzFreightersStuck": "艘货轮滞留",
+    "hormuzSPR": "战略石油储备",
+    "hormuzDays": "天",
+    "hormuzCPI": "CPI影响",
+    "hormuzAltRoutes": "替代路线",
+    "hormuzPeaceTalks": "和平谈判",
+    "hormuzCrisisTimeline": "危机时间线",
+    "hormuzLatestNews": "最新新闻",
+    "hormuzEventType": {
+      "military": "军事",
+      "escalation": "升级",
+      "diplomatic": "外交",
+      "political": "政治",
+      "economic": "经济",
+      "naval": "海军"
+    }
   },
   "modals": {
     "search": {

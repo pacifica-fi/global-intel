@@ -151,7 +151,46 @@
     "hormuzAisNotConfigured": "AIS not configured",
     "hormuzColName": "Vessel",
     "hormuzColSpeed": "Speed",
-    "hormuzColHeading": "Hdg"
+    "hormuzColHeading": "Hdg",
+    "hormuzStatus": {
+      "restricted": "RESTRICTED",
+      "closed": "CLOSED",
+      "open": "OPEN",
+      "unknown": "UNKNOWN"
+    },
+    "hormuzSince": "Since",
+    "hormuzTransitingNow": "Transiting Now",
+    "hormuzLast24h": "Last 24h",
+    "hormuzNormalAvg": "Normal Avg",
+    "hormuzThroughput": "Throughput",
+    "hormuzWarRisk": "War Risk Insurance",
+    "hormuzWarRiskLevel": {
+      "extreme": "EXTREME",
+      "high": "HIGH",
+      "moderate": "MODERATE",
+      "elevated": "ELEVATED"
+    },
+    "hormuzPremium": "Premium",
+    "hormuzLngImpact": "LNG Impact",
+    "hormuzWorldLng": "World LNG at risk",
+    "hormuzSupplyChain": "Supply Chain",
+    "hormuzShippingRates": "Shipping Rates",
+    "hormuzFreightersStuck": "freighters stuck",
+    "hormuzSPR": "SPR Reserve",
+    "hormuzDays": "d",
+    "hormuzCPI": "CPI Impact",
+    "hormuzAltRoutes": "Alternative Routes",
+    "hormuzPeaceTalks": "Peace Talks",
+    "hormuzCrisisTimeline": "Crisis Timeline",
+    "hormuzLatestNews": "Latest News",
+    "hormuzEventType": {
+      "military": "MILITARY",
+      "escalation": "ESCALATION",
+      "diplomatic": "DIPLOMATIC",
+      "political": "POLITICAL",
+      "economic": "ECONOMIC",
+      "naval": "NAVAL"
+    }
   },
   "modals": {
     "search": {

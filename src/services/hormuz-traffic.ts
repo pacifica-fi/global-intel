@@ -1,185 +1,204 @@
 /**
- * Strait of Hormuz Traffic Monitoring Service
- * Filters AIS data to the Hormuz bounding box and classifies vessels.
- * Uses the shared AIS stream via callback system (same pattern as military-vessels.ts).
+ * Strait of Hormuz Status Service
+ * Fetches curated monitoring data from hormuzstraitmonitor.com via the relay.
+ * Replaces the previous AIS-based approach due to poor Persian Gulf coverage.
  */
-import {
-  registerAisCallback,
-  unregisterAisCallback,
-  isAisConfigured,
-  initAisStream,
-  type AisPositionData,
-} from './ais';
 
-// Strait of Hormuz bounding box (extended to cover Persian Gulf approaches)
-const HORMUZ_BOUNDS = {
-  north: 28.5,
-  south: 24.0,
-  west: 52.0,
-  east: 58.0,
-  center: { lat: 26.5, lon: 56.5 },
-};
+const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
+const RAILWAY_HORMUZ_URL = wsRelayUrl
+  ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/hormuz-status'
+  : '';
+const VERCEL_HORMUZ_API = '/api/hormuz-status';
+const LOCAL_HORMUZ_FALLBACK = 'http://localhost:3004/hormuz-status';
 
-const VESSEL_STALE_MS = 30 * 60 * 1000; // 30 minutes
+export interface HormuzStraitStatus {
+  state: string;
+  since: string;
+  duration?: { days: number; hours: number; minutes: number };
+}
 
-export type HormuzVesselCategory = 'tanker' | 'cargo' | 'passenger' | 'military' | 'other';
+export interface HormuzTrafficData {
+  transitingNow?: number;
+  last24h?: number;
+  normalAvg?: number;
+  pctOfNormal?: number;
+  dwtThroughput?: string;
+}
 
-export interface HormuzVessel {
-  mmsi: string;
+export interface HormuzWarRisk {
+  level?: string;
+  premium?: number;
+  normalPremium?: number;
+  multiplier?: number;
+}
+
+export interface HormuzLngImpact {
+  lngPctAtRisk?: number;
+  dailyCost?: string;
+  importersAtRisk?: string;
+}
+
+export interface HormuzSupplyChain {
+  shippingRateIncrease?: number;
+  cpiImpact?: number;
+  sprDays?: number;
+  supertankerRates?: string;
+  freightersStuck?: number;
+  carriersSuspended?: string[];
+}
+
+export interface HormuzAlternativeRoute {
   name: string;
-  lat: number;
-  lon: number;
-  category: HormuzVesselCategory;
-  shipType?: number;
-  heading?: number;
-  speed?: number;
-  course?: number;
-  lastUpdate: number;
+  extraDays?: number;
+  extraCost?: string;
+  capacity?: string;
+  status?: string;
+  coverage?: string;
 }
 
-export interface HormuzTrafficStats {
-  total: number;
-  tankers: number;
-  cargo: number;
-  passenger: number;
-  military: number;
-  other: number;
-  congestion: 'normal' | 'elevated' | 'high';
-  trend: 'up' | 'down' | 'stable';
-  lastUpdate: number;
+export interface HormuzTimelineEvent {
+  date: string;
+  type: string;
+  description: string;
 }
 
-const trackedVessels = new Map<string, HormuzVessel>();
-let prevTotal = 0;
-let isTracking = false;
-let statsCache: HormuzTrafficStats | null = null;
-
-/**
- * Classify vessel by AIS ship type code into broad categories.
- */
-function classifyVessel(shipType?: number): HormuzVesselCategory {
-  if (shipType === undefined || shipType === null) return 'other';
-  // Military ops or law enforcement
-  if (shipType === 35 || shipType === 55) return 'military';
-  // Tanker
-  if (shipType >= 80 && shipType <= 89) return 'tanker';
-  // Cargo
-  if (shipType >= 70 && shipType <= 79) return 'cargo';
-  // Passenger
-  if (shipType >= 60 && shipType <= 69) return 'passenger';
-  return 'other';
+export interface HormuzNewsItem {
+  title: string;
+  url: string;
 }
 
-function isInBounds(lat: number, lon: number): boolean {
-  return (
-    lat >= HORMUZ_BOUNDS.south &&
-    lat <= HORMUZ_BOUNDS.north &&
-    lon >= HORMUZ_BOUNDS.west &&
-    lon <= HORMUZ_BOUNDS.east
-  );
+export interface HormuzPeaceTalks {
+  status: string;
+  location?: string;
+  usLead?: string;
+  iranLead?: string;
 }
 
-function processPosition(data: AisPositionData): void {
-  if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return;
-  if (!isInBounds(data.lat, data.lon)) return;
-
-  const now = Date.now();
-  trackedVessels.set(data.mmsi, {
-    mmsi: data.mmsi,
-    name: data.name || '',
-    lat: data.lat,
-    lon: data.lon,
-    category: classifyVessel(data.shipType),
-    shipType: data.shipType,
-    heading: data.heading,
-    speed: data.speed,
-    course: data.course,
-    lastUpdate: now,
-  });
+export interface HormuzStatusData {
+  fetchedAt: string;
+  status: HormuzStraitStatus | null;
+  traffic: HormuzTrafficData | null;
+  warRisk: HormuzWarRisk | null;
+  lngImpact: HormuzLngImpact | null;
+  supplyChain: HormuzSupplyChain | null;
+  alternativeRoutes: HormuzAlternativeRoute[];
+  crisisTimeline: HormuzTimelineEvent[];
+  latestNews: HormuzNewsItem[];
+  peaceTalks: HormuzPeaceTalks | null;
+  error?: string;
 }
 
-function cleanup(): void {
-  const cutoff = Date.now() - VESSEL_STALE_MS;
-  for (const [mmsi, v] of trackedVessels) {
-    if (v.lastUpdate < cutoff) trackedVessels.delete(mmsi);
+type StatusCallback = (data: HormuzStatusData) => void;
+
+const callbacks = new Set<StatusCallback>();
+let cachedData: HormuzStatusData | null = null;
+let lastFetch = 0;
+let fetchTimer: ReturnType<typeof setInterval> | null = null;
+let isFetching = false;
+
+const POLL_INTERVAL = 5 * 60 * 1000; // 5 min
+
+export function registerHormuzStatusCallback(cb: StatusCallback): void {
+  callbacks.add(cb);
+  if (cachedData) cb(cachedData);
+}
+
+export function unregisterHormuzStatusCallback(cb: StatusCallback): void {
+  callbacks.delete(cb);
+}
+
+function notifyAll(data: HormuzStatusData): void {
+  for (const cb of callbacks) {
+    try { cb(data); } catch { /* ignore */ }
   }
 }
 
-/**
- * Initialize Hormuz traffic tracking via shared AIS stream.
- */
+function getUrls(): string[] {
+  const urls: string[] = [];
+  if (RAILWAY_HORMUZ_URL) urls.push(RAILWAY_HORMUZ_URL);
+  urls.push(VERCEL_HORMUZ_API);
+  urls.push(LOCAL_HORMUZ_FALLBACK);
+  return urls;
+}
+
+async function fetchStatus(): Promise<HormuzStatusData> {
+  const urls = getUrls();
+  for (const url of urls) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && data.fetchedAt) return data as HormuzStatusData;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('All Hormuz status endpoints failed');
+}
+
+async function poll(): Promise<void> {
+  if (isFetching) return;
+  isFetching = true;
+  try {
+    const data = await fetchStatus();
+    cachedData = data;
+    lastFetch = Date.now();
+    notifyAll(data);
+  } catch {
+    // Keep stale data
+  } finally {
+    isFetching = false;
+  }
+}
+
+export function initHormuzStatusTracking(): void {
+  if (fetchTimer) return;
+  poll(); // Initial fetch
+  fetchTimer = setInterval(poll, POLL_INTERVAL);
+}
+
+export function stopHormuzStatusTracking(): void {
+  if (fetchTimer) {
+    clearInterval(fetchTimer);
+    fetchTimer = null;
+  }
+  callbacks.clear();
+}
+
+export function getHormuzCachedStatus(): HormuzStatusData | null {
+  return cachedData;
+}
+
+export function isHormuzStatusActive(): boolean {
+  return fetchTimer !== null;
+}
+
+// Legacy compatibility exports (used by panel count display)
 export function initHormuzTracking(): void {
-  if (isTracking) return;
-  registerAisCallback(processPosition);
-  isTracking = true;
-  if (isAisConfigured()) initAisStream();
+  initHormuzStatusTracking();
 }
 
 export function disconnectHormuzTracking(): void {
-  if (!isTracking) return;
-  unregisterAisCallback(processPosition);
-  isTracking = false;
+  stopHormuzStatusTracking();
 }
 
 export function isHormuzTrackingActive(): boolean {
-  return isTracking;
+  return isHormuzStatusActive();
 }
 
-/**
- * Get all tracked vessels in the Hormuz bounding box.
- */
-export function getHormuzVessels(): HormuzVessel[] {
-  cleanup();
-  return Array.from(trackedVessels.values());
+export function getHormuzStats(): { total: number; lastUpdate: number } {
+  return { total: cachedData?.traffic?.transitingNow ?? 0, lastUpdate: lastFetch };
 }
 
-/**
- * Compute traffic statistics.
- */
-export function getHormuzStats(): HormuzTrafficStats {
-  cleanup();
-  const vessels = Array.from(trackedVessels.values());
-  const total = vessels.length;
-
-  let tankers = 0, cargo = 0, passenger = 0, military = 0, other = 0;
-  for (const v of vessels) {
-    switch (v.category) {
-      case 'tanker': tankers++; break;
-      case 'cargo': cargo++; break;
-      case 'passenger': passenger++; break;
-      case 'military': military++; break;
-      default: other++; break;
-    }
-  }
-
-  // Congestion heuristic based on total vessel count in the strait
-  let congestion: HormuzTrafficStats['congestion'] = 'normal';
-  if (total >= 30) congestion = 'high';
-  else if (total >= 15) congestion = 'elevated';
-
-  // Trend
-  let trend: HormuzTrafficStats['trend'] = 'stable';
-  if (total > prevTotal + 2) trend = 'up';
-  else if (total < prevTotal - 2) trend = 'down';
-  prevTotal = total;
-
-  statsCache = {
-    total,
-    tankers,
-    cargo,
-    passenger,
-    military,
-    other,
-    congestion,
-    trend,
-    lastUpdate: Date.now(),
-  };
-  return statsCache;
-}
-
-/**
- * Get the Hormuz bounding box center (for flying the main map).
- */
 export function getHormuzCenter(): { lat: number; lon: number } {
-  return { ...HORMUZ_BOUNDS.center };
+  return { lat: 26.5, lon: 56.5 };
 }
+
+// Re-export for panel compatibility
+export type HormuzTrafficStats = ReturnType<typeof getHormuzStats>;
