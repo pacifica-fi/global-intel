@@ -26,14 +26,6 @@ const VESSEL_COLORS: Record<string, string> = {
   other: '#94a3b8',
 };
 
-const VESSEL_GLOW: Record<string, string> = {
-  tanker: 'rgba(255,107,53,0.30)',
-  cargo: 'rgba(78,205,196,0.30)',
-  passenger: 'rgba(69,183,209,0.30)',
-  military: 'rgba(192,132,252,0.30)',
-  other: 'rgba(148,163,184,0.20)',
-};
-
 export class HormuzTrafficPanel extends Panel {
   private mapWrap: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -202,35 +194,29 @@ export class HormuzTrafficPanel extends Panel {
     if (vessels.length === 0) return;
 
     const zoom = this.map.getZoom();
-    // Scale dot size with zoom
-    const dotR = Math.max(2, Math.min(8, zoom - 3));
-    const glowR = dotR * 2.5;
+    const dotR = Math.max(3.5, Math.min(7, zoom - 2));
+    const glowR = dotR + 5;
 
     for (const v of vessels) {
       const pt = this.map.project({ lat: v.lat, lon: v.lon });
       if (pt.x < -50 || pt.x > w + 50 || pt.y < -50 || pt.y > h + 50) continue;
 
       const color = VESSEL_COLORS[v.category] || VESSEL_COLORS.other!;
-      const glow = VESSEL_GLOW[v.category] || VESSEL_GLOW.other!;
 
-      // Glow
+      // Glow — radial gradient from color to transparent
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, glowR, 0, Math.PI * 2);
-      ctx.fillStyle = glow;
+      const grad = ctx.createRadialGradient(pt.x, pt.y, dotR * 0.5, pt.x, pt.y, glowR);
+      grad.addColorStop(0, color + '80'); // 50% alpha via hex
+      grad.addColorStop(1, color + '00'); // 0% alpha
+      ctx.fillStyle = grad;
       ctx.fill();
 
-      // Dot
+      // Solid colored dot
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
-
-      // White ring
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, dotR, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
 
       // Heading line
       if (v.heading != null && v.heading !== 511 && v.speed != null && v.speed > 0.5) {
