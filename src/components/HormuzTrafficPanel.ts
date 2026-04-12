@@ -1,7 +1,6 @@
 /**
  * Strait of Hormuz Traffic Panel
- * Dashboard panel showing curated data from hormuzstraitmonitor.com.
- * Replaces the previous MapLibre + canvas approach.
+ * 2x2 grid dashboard showing data from hormuzstraitmonitor.com/api/dashboard.
  */
 import { Panel } from './Panel';
 import type { MapContainer } from './MapContainer';
@@ -11,15 +10,11 @@ import {
   registerHormuzStatusCallback,
   unregisterHormuzStatusCallback,
   type HormuzStatusData,
-  type HormuzStraitStatus,
-  type HormuzTrafficData,
-  type HormuzWarRisk,
-  type HormuzLngImpact,
-  type HormuzSupplyChain,
+  type HormuzDashboardData,
   type HormuzAlternativeRoute,
   type HormuzTimelineEvent,
   type HormuzNewsItem,
-  type HormuzPeaceTalks,
+  type HormuzAffectedRegion,
 } from '@/services/hormuz-traffic';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -29,8 +24,32 @@ const STATUS_COLORS: Record<string, string> = {
   UNKNOWN: '#94a3b8',
 };
 
-function statusColor(state: string): string {
-  return STATUS_COLORS[state.toUpperCase() as keyof typeof STATUS_COLORS] ?? STATUS_COLORS.UNKNOWN!;
+const SEVERITY_COLORS: Record<string, string> = {
+  CRITICAL: '#ef4444',
+  HIGH: '#ff6b35',
+  MODERATE: '#fbbf24',
+  LOW: '#4ecdc4',
+};
+
+const EVENT_COLORS: Record<string, string> = {
+  MILITARY: '#ef4444',
+  ESCALATION: '#ff6b35',
+  DIPLOMATIC: '#4ecdc4',
+  POLITICAL: '#45b7d1',
+  ECONOMIC: '#fbbf24',
+  NAVAL: '#c084fc',
+};
+
+function sevColor(sev: string): string {
+  return SEVERITY_COLORS[sev.toUpperCase()] ?? '#94a3b8';
+}
+
+function stColor(status: string): string {
+  return STATUS_COLORS[status.toUpperCase()] ?? STATUS_COLORS.UNKNOWN!;
+}
+
+function evtColor(type: string): string {
+  return EVENT_COLORS[type.toUpperCase()] ?? '#94a3b8';
 }
 
 export class HormuzTrafficPanel extends Panel {
@@ -45,11 +64,10 @@ export class HormuzTrafficPanel extends Panel {
       showCount: true,
       trackActivity: true,
       infoTooltip: `<strong>Strait of Hormuz Monitor</strong>
-        Curated data from hormuzstraitmonitor.com.
-        <ul><li>Strait status and duration</li><li>Traffic throughput vs normal</li>
-        <li>War risk insurance premiums</li><li>LNG impact analysis</li>
-        <li>Supply chain disruptions</li><li>Crisis timeline</li></ul>
-        <br><em>Updated every 15 minutes from source.</em>`,
+        Live data from hormuzstraitmonitor.com/api/dashboard.
+        <ul><li>Strait status, traffic &amp; oil price</li><li>Insurance, trade impact &amp; supply chain</li>
+        <li>Diplomacy &amp; crisis timeline</li><li>Alternative routes &amp; latest news</li></ul>
+        <br><em>Updated every 5 minutes.</em>`,
     });
     this.getElement().classList.add('col-span-2', 'span-3', 'resized');
     this.init();
@@ -57,7 +75,7 @@ export class HormuzTrafficPanel extends Panel {
 
   private init(): void {
     this.contentEl = document.createElement('div');
-    this.contentEl.className = 'hormuz-dashboard';
+    this.contentEl.className = 'hormuz-grid';
     this.contentEl.innerHTML = `<div class="hormuz-loading">${t('common.loading') || 'Loading...'}</div>`;
     this.content.appendChild(this.contentEl);
 
@@ -65,206 +83,176 @@ export class HormuzTrafficPanel extends Panel {
     registerHormuzStatusCallback(this.onData);
     this.timer = setInterval(() => {
       if (this.lastData) this.render(this.lastData);
-    }, 60_000); // Re-render every minute to update duration counter
+    }, 60_000);
   }
 
   private onData = (data: HormuzStatusData): void => {
     this.lastData = data;
-    this.setCount(data.traffic?.transitingNow ?? 0);
+    this.setCount(data.data?.shipCount?.currentTransits ?? 0);
     this.render(data);
   };
 
-  private render(data: HormuzStatusData): void {
+  private render(wrapper: HormuzStatusData): void {
     if (!this.contentEl) return;
+    const d = wrapper.data;
+    if (!d) {
+      this.contentEl.innerHTML = `<div class="hormuz-loading">${wrapper.error ?? 'No data'}</div>`;
+      return;
+    }
     this.contentEl.innerHTML = `
-      ${this.renderStatus(data.status)}
-      ${this.renderTraffic(data.traffic)}
-      ${this.renderCards(data.warRisk, data.lngImpact, data.supplyChain)}
-      ${this.renderAltRoutes(data.alternativeRoutes)}
-      ${this.renderPeaceTalks(data.peaceTalks)}
-      ${this.renderTimeline(data.crisisTimeline)}
-      ${this.renderNews(data.latestNews)}
-      <div class="hormuz-footer">
-        <span>hormuzstraitmonitor.com</span>
-        <span>${data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString() : ''}</span>
+      <div class="hormuz-quadrant">
+        ${this.qStatusTraffic(d)}
+      </div>
+      <div class="hormuz-quadrant">
+        ${this.qInsuranceImpact(d)}
+      </div>
+      <div class="hormuz-quadrant">
+        ${this.qDiplomacyTimeline(d)}
+      </div>
+      <div class="hormuz-quadrant">
+        ${this.qRoutesNews(d, wrapper.fetchedAt)}
       </div>
     `;
   }
 
-  private renderStatus(s: HormuzStraitStatus | null): string {
-    if (!s) return '';
-    const color = statusColor(s.state);
-    const stateLabel = t(`panels.hormuzStatus.${s.state.toLowerCase()}`) || s.state;
-    let duration = '';
-    if (s.duration) {
-      duration = `${s.duration.days}d ${s.duration.hours}h ${s.duration.minutes}m`;
-    }
+  // ---- Quadrant 1: Strait Status + Traffic + Oil Price ----
+  private qStatusTraffic(d: HormuzDashboardData): string {
+    const s = d.straitStatus;
+    const sc = d.shipCount;
+    const op = d.oilPrice;
+    const th = d.throughput;
+    const color = stColor(s.status);
+    const pctColor = (sc.percentOfNormal > 70) ? '#4ecdc4' : (sc.percentOfNormal > 30) ? '#fbbf24' : '#ff6b35';
+    const priceUp = op.change24h >= 0;
+
+    // Mini sparkline SVG
+    const sparkline = this.sparklineSvg(op.sparkline, 120, 28);
+
     return `
-      <div class="hormuz-status-banner" style="border-left:4px solid ${color}">
-        <div class="hormuz-status-state" style="color:${color}">${this.esc(stateLabel)}</div>
-        ${s.since ? `<div class="hormuz-status-since">${t('panels.hormuzSince') || 'Since'} ${this.esc(s.since)}</div>` : ''}
-        ${duration ? `<div class="hormuz-status-duration">${duration}</div>` : ''}
+      <div class="hq-title">Strait Status &amp; Traffic</div>
+      <div class="hq-status-row" style="border-left:3px solid ${color}">
+        <span class="hq-status-badge" style="color:${color}">${this.esc(s.status)}</span>
+        <span class="hq-status-since">Since ${this.esc(s.since)}</span>
+      </div>
+      <div class="hq-metrics">
+        <div class="hq-metric">
+          <span class="hq-mv">${sc.currentTransits}</span>
+          <span class="hq-ml">Transiting</span>
+        </div>
+        <div class="hq-metric">
+          <span class="hq-mv">${sc.last24h}</span>
+          <span class="hq-ml">Last 24h</span>
+        </div>
+        <div class="hq-metric">
+          <span class="hq-mv">${sc.normalDaily}</span>
+          <span class="hq-ml">Normal</span>
+        </div>
+        <div class="hq-metric">
+          <span class="hq-mv" style="color:${pctColor}">${sc.percentOfNormal}%</span>
+          <span class="hq-ml">Throughput</span>
+        </div>
+      </div>
+      <div class="hq-bar"><div class="hq-bar-fill" style="width:${Math.min(sc.percentOfNormal, 100)}%;background:${pctColor}"></div></div>
+      <div class="hq-subsection">
+        <div class="hq-oil-row">
+          <span class="hq-oil-label">Brent Crude</span>
+          <span class="hq-oil-price">$${op.brentPrice.toFixed(2)}</span>
+          <span class="hq-oil-change" style="color:${priceUp ? '#ef4444' : '#4ecdc4'}">${priceUp ? '+' : ''}${op.changePercent24h.toFixed(2)}%</span>
+        </div>
+        ${sparkline}
+      </div>
+      <div class="hq-subsection">
+        <span class="hq-dim">DWT Today: ${this.fmtNum(th.todayDWT)} / ${this.fmtNum(th.averageDWT)} (${th.percentOfNormal}%)</span>
+      </div>
+      <div class="hq-subsection">
+        <span class="hq-dim">${this.esc(s.description.substring(0, 160))}</span>
       </div>
     `;
   }
 
-  private renderTraffic(tr: HormuzTrafficData | null): string {
-    if (!tr) return '';
-    const pct = tr.pctOfNormal ?? 0;
-    const barColor = pct > 70 ? '#4ecdc4' : pct > 30 ? '#fbbf24' : '#ff6b35';
+  // ---- Quadrant 2: Insurance + Trade Impact + Supply Chain ----
+  private qInsuranceImpact(d: HormuzDashboardData): string {
+    const ins = d.insurance;
+    const gti = d.globalTradeImpact;
+    const sci = gti.supplyChainImpact;
+    const lng = gti.lngImpact;
+    const insColor = (ins.level.toUpperCase() === 'EXTREME') ? '#ef4444' : (ins.level.toUpperCase() === 'HIGH') ? '#ff6b35' : '#fbbf24';
+    const sv = d.strandedVessels;
+
     return `
-      <div class="hormuz-traffic-overview">
-        <div class="hormuz-traffic-metric">
-          <span class="hormuz-traffic-val">${tr.transitingNow ?? '--'}</span>
-          <span class="hormuz-traffic-label">${t('panels.hormuzTransitingNow') || 'Transiting Now'}</span>
+      <div class="hq-title">Insurance &amp; Trade Impact</div>
+      <div class="hq-cards">
+        <div class="hq-card">
+          <div class="hq-card-label">War Risk</div>
+          <div class="hq-card-val" style="color:${insColor}">${this.esc(ins.level)}</div>
+          <div class="hq-card-sub">${ins.warRiskPercent}% (${ins.multiplier}x normal)</div>
         </div>
-        <div class="hormuz-traffic-metric">
-          <span class="hormuz-traffic-val">${tr.last24h ?? '--'}</span>
-          <span class="hormuz-traffic-label">${t('panels.hormuzLast24h') || 'Last 24h'}</span>
+        <div class="hq-card">
+          <div class="hq-card-label">World Oil at Risk</div>
+          <div class="hq-card-val">${gti.percentOfWorldOilAtRisk}%</div>
+          <div class="hq-card-sub">$${gti.estimatedDailyCostBillions}B daily cost</div>
         </div>
-        <div class="hormuz-traffic-metric">
-          <span class="hormuz-traffic-val">${tr.normalAvg ?? '--'}</span>
-          <span class="hormuz-traffic-label">${t('panels.hormuzNormalAvg') || 'Normal Avg'}</span>
+        <div class="hq-card">
+          <div class="hq-card-label">LNG at Risk</div>
+          <div class="hq-card-val">${lng.percentOfWorldLngAtRisk}%</div>
+          <div class="hq-card-sub">${lng.topAffectedImporters.join(', ')}</div>
         </div>
-        <div class="hormuz-traffic-metric">
-          <span class="hormuz-traffic-val" style="color:${barColor}">${pct}%</span>
-          <span class="hormuz-traffic-label">${t('panels.hormuzThroughput') || 'Throughput'}</span>
+        <div class="hq-card">
+          <div class="hq-card-label">Shipping Rates</div>
+          <div class="hq-card-val">+${sci.shippingRateIncreasePercent}%</div>
+          <div class="hq-card-sub">Consumer prices +${sci.consumerPriceImpactPercent}%</div>
+        </div>
+        <div class="hq-card">
+          <div class="hq-card-label">SPR Reserve</div>
+          <div class="hq-card-val">${sci.sprStatusDays}d</div>
+          <div class="hq-card-sub">Strategic Petroleum</div>
+        </div>
+        <div class="hq-card">
+          <div class="hq-card-label">Stranded</div>
+          <div class="hq-card-val">${sv.total}</div>
+          <div class="hq-card-sub">${sv.tankers} tankers / ${sv.bulk} bulk</div>
         </div>
       </div>
-      ${pct > 0 ? `
-        <div class="hormuz-throughput-bar">
-          <div class="hormuz-throughput-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div>
-        </div>
-      ` : ''}
-    `;
-  }
-
-  private renderCards(wr: HormuzWarRisk | null, lng: HormuzLngImpact | null, sc: HormuzSupplyChain | null): string {
-    const cards: string[] = [];
-
-    if (wr) {
-      const levelColor = (wr.level || '').toUpperCase() === 'EXTREME' ? '#ef4444' :
-        (wr.level || '').toUpperCase() === 'HIGH' ? '#ff6b35' : '#fbbf24';
-      const levelLabel = t(`panels.hormuzWarRiskLevel.${(wr.level || '').toLowerCase()}`) || wr.level || '--';
-      cards.push(`
-        <div class="hormuz-card">
-          <div class="hormuz-card-title">${t('panels.hormuzWarRisk') || 'War Risk Insurance'}</div>
-          <div class="hormuz-card-value" style="color:${levelColor}">${this.esc(levelLabel)}</div>
-          <div class="hormuz-card-detail">
-            ${wr.premium ? `${t('panels.hormuzPremium') || 'Premium'}: ${wr.premium}%` : ''}
-            ${wr.multiplier ? ` (${wr.multiplier}x)` : ''}
+      <div class="hq-section-sep"></div>
+      <div class="hq-subsection">
+        <div class="hq-mini-title">Affected Regions</div>
+        ${gti.affectedRegions.map((r: HormuzAffectedRegion) => `
+          <div class="hq-region-row">
+            <span class="hq-region-sev" style="color:${sevColor(r.severity)}">${this.esc(r.severity)}</span>
+            <span class="hq-region-name">${this.esc(r.name)}</span>
+            <span class="hq-region-pct">${r.oilDependencyPercent}%</span>
           </div>
-        </div>
-      `);
-    }
-
-    if (lng) {
-      cards.push(`
-        <div class="hormuz-card">
-          <div class="hormuz-card-title">${t('panels.hormuzLngImpact') || 'LNG Impact'}</div>
-          <div class="hormuz-card-value">${lng.lngPctAtRisk ?? '--'}%</div>
-          <div class="hormuz-card-detail">
-            ${t('panels.hormuzWorldLng') || 'World LNG at risk'}
-          </div>
-        </div>
-      `);
-    }
-
-    if (sc) {
-      cards.push(`
-        <div class="hormuz-card">
-          <div class="hormuz-card-title">${t('panels.hormuzSupplyChain') || 'Supply Chain'}</div>
-          <div class="hormuz-card-value">${sc.shippingRateIncrease ? `+${sc.shippingRateIncrease}%` : '--'}</div>
-          <div class="hormuz-card-detail">
-            ${t('panels.hormuzShippingRates') || 'Shipping Rates'}
-            ${sc.freightersStuck ? ` · ${sc.freightersStuck} ${t('panels.hormuzFreightersStuck') || 'freighters stuck'}` : ''}
-          </div>
-        </div>
-      `);
-    }
-
-    if (sc?.sprDays) {
-      cards.push(`
-        <div class="hormuz-card hormuz-card-small">
-          <div class="hormuz-card-title">${t('panels.hormuzSPR') || 'SPR Reserve'}</div>
-          <div class="hormuz-card-value">${sc.sprDays}${t('panels.hormuzDays') || 'd'}</div>
-        </div>
-      `);
-    }
-
-    if (sc?.cpiImpact) {
-      cards.push(`
-        <div class="hormuz-card hormuz-card-small">
-          <div class="hormuz-card-title">${t('panels.hormuzCPI') || 'CPI Impact'}</div>
-          <div class="hormuz-card-value">+${sc.cpiImpact}%</div>
-        </div>
-      `);
-    }
-
-    if (cards.length === 0) return '';
-    return `<div class="hormuz-cards">${cards.join('')}</div>`;
-  }
-
-  private renderAltRoutes(routes: HormuzAlternativeRoute[]): string {
-    if (routes.length === 0) return '';
-    return `
-      <div class="hormuz-section">
-        <div class="hormuz-section-title">${t('panels.hormuzAltRoutes') || 'Alternative Routes'}</div>
-        <div class="hormuz-alt-routes">
-          ${routes.map(r => `
-            <div class="hormuz-alt-route">
-              <strong>${this.esc(r.name)}</strong>
-              ${r.extraDays ? `<span class="hormuz-alt-detail">+${r.extraDays}d</span>` : ''}
-              ${r.extraCost ? `<span class="hormuz-alt-detail">+$${r.extraCost}</span>` : ''}
-              ${r.capacity ? `<span class="hormuz-alt-detail">${this.esc(r.capacity)}</span>` : ''}
-              ${r.status ? `<span class="hormuz-alt-detail">${this.esc(r.status)}</span>` : ''}
-              ${r.coverage ? `<span class="hormuz-alt-detail">${this.esc(r.coverage)}</span>` : ''}
-            </div>
-          `).join('')}
-        </div>
+        `).join('')}
       </div>
     `;
   }
 
-  private renderPeaceTalks(pt: HormuzPeaceTalks | null): string {
-    if (!pt) return '';
-    const statusColor = pt.status === 'IN PROGRESS' ? '#4ecdc4' : '#fbbf24';
-    return `
-      <div class="hormuz-section">
-        <div class="hormuz-section-title">${t('panels.hormuzPeaceTalks') || 'Peace Talks'}</div>
-        <div class="hormuz-peace-talks">
-          <span class="hormuz-peace-status" style="color:${statusColor}">${this.esc(pt.status)}</span>
-          ${pt.location ? `<span class="hormuz-peace-detail">${this.esc(pt.location)}</span>` : ''}
-          ${pt.usLead ? `<span class="hormuz-peace-detail">US: ${this.esc(pt.usLead)}</span>` : ''}
-          ${pt.iranLead ? `<span class="hormuz-peace-detail">IR: ${this.esc(pt.iranLead)}</span>` : ''}
-        </div>
-      </div>
-    `;
-  }
+  // ---- Quadrant 3: Diplomacy + Crisis Timeline ----
+  private qDiplomacyTimeline(d: HormuzDashboardData): string {
+    const dip = d.diplomacy;
+    const events = d.crisisTimeline;
+    const dipColor = (dip.status === 'IN PROGRESS') ? '#4ecdc4' : '#fbbf24';
 
-  private renderTimeline(events: HormuzTimelineEvent[]): string {
-    if (events.length === 0) return '';
-    const typeColors: Record<string, string> = {
-      MILITARY: '#ef4444',
-      ESCALATION: '#ff6b35',
-      DIPLOMATIC: '#4ecdc4',
-      POLITICAL: '#45b7d1',
-      ECONOMIC: '#fbbf24',
-      NAVAL: '#c084fc',
-    };
     return `
-      <div class="hormuz-section">
-        <div class="hormuz-section-title">${t('panels.hormuzCrisisTimeline') || 'Crisis Timeline'}</div>
-        <div class="hormuz-timeline">
-          ${events.slice(0, 8).map(e => {
-            const tc = typeColors[e.type.toUpperCase()] || '#94a3b8';
-            const typeLabel = t(`panels.hormuzEventType.${e.type.toLowerCase()}`) || e.type;
+      <div class="hq-title">Diplomacy &amp; Timeline</div>
+      <div class="hq-dip-box">
+        <div class="hq-dip-status" style="color:${dipColor}">${this.esc(dip.status)}</div>
+        <div class="hq-dip-headline">${this.esc(dip.headline)}</div>
+        <div class="hq-dip-meta">${this.esc(dip.date)} &middot; ${dip.parties.join(', ')}</div>
+        <div class="hq-dip-summary">${this.esc(dip.summary.substring(0, 200))}</div>
+      </div>
+      <div class="hq-section-sep"></div>
+      <div class="hq-subsection">
+        <div class="hq-mini-title">Crisis Timeline</div>
+        <div class="hq-timeline">
+          ${events.slice(0, 10).map((e: HormuzTimelineEvent) => {
+            const ec = evtColor(e.type);
             return `
-              <div class="hormuz-timeline-item">
-                <span class="hormuz-timeline-dot" style="background:${tc}"></span>
-                <span class="hormuz-timeline-date">${this.esc(e.date)}</span>
-                <span class="hormuz-timeline-type" style="color:${tc}">${this.esc(typeLabel)}</span>
-                <span class="hormuz-timeline-desc">${this.esc(e.description.substring(0, 120))}</span>
+              <div class="hq-tl-item">
+                <span class="hq-tl-dot" style="background:${ec}"></span>
+                <span class="hq-tl-date">${this.esc(e.date)}</span>
+                <span class="hq-tl-type" style="color:${ec}">${this.esc(e.type)}</span>
+                <span class="hq-tl-text">${this.esc(e.title)}</span>
               </div>
             `;
           }).join('')}
@@ -273,20 +261,60 @@ export class HormuzTrafficPanel extends Panel {
     `;
   }
 
-  private renderNews(news: HormuzNewsItem[]): string {
-    if (news.length === 0) return '';
+  // ---- Quadrant 4: Alternative Routes + News ----
+  private qRoutesNews(d: HormuzDashboardData, fetchedAt: string): string {
+    const routes = d.globalTradeImpact.alternativeRoutes;
+    const news = d.news;
+
     return `
-      <div class="hormuz-section">
-        <div class="hormuz-section-title">${t('panels.hormuzLatestNews') || 'Latest News'}</div>
-        <div class="hormuz-news-list">
-          ${news.slice(0, 6).map(n => `
-            <a class="hormuz-news-item" href="${this.esc(n.url)}" target="_blank" rel="noopener noreferrer">
+      <div class="hq-title">Routes &amp; News</div>
+      <div class="hq-routes">
+        ${routes.map((r: HormuzAlternativeRoute) => `
+          <div class="hq-route">
+            <div class="hq-route-name">${this.esc(r.name)}</div>
+            <div class="hq-route-meta">
+              ${r.additionalDays ? `<span class="hq-route-tag">+${r.additionalDays}d</span>` : ''}
+              <span class="hq-route-tag">+$${r.additionalCostPerVessel}M</span>
+            </div>
+            <div class="hq-route-status">${this.esc(r.currentUsageStatus.substring(0, 80))}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="hq-section-sep"></div>
+      <div class="hq-subsection">
+        <div class="hq-mini-title">Latest News</div>
+        <div class="hq-news">
+          ${news.slice(0, 6).map((n: HormuzNewsItem) => `
+            <a class="hq-news-item" href="${this.esc(n.url)}" target="_blank" rel="noopener noreferrer">
+              <span class="hq-news-source">${this.esc(n.source)}</span>
               ${this.esc(n.title)}
             </a>
           `).join('')}
         </div>
       </div>
+      <div class="hq-footer">
+        <span>hormuzstraitmonitor.com</span>
+        <span>${fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : ''}</span>
+      </div>
     `;
+  }
+
+  // ---- Helpers ----
+
+  private sparklineSvg(data: number[], w: number, h: number): string {
+    if (!data || data.length < 2) return '';
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const stepX = w / (data.length - 1);
+    const points = data.map((v, i) => `${(i * stepX).toFixed(1)},${(h - ((v - min) / range) * (h - 4) - 2).toFixed(1)}`).join(' ');
+    return `<svg class="hq-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+
+  private fmtNum(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(0) + 'K';
+    return String(n);
   }
 
   private esc(s: string): string {
