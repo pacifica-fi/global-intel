@@ -10,6 +10,9 @@ interface CoinMarketItem {
   marketCap: number;
   volume24h: number;
   change24h: number;
+  sparkline7d: number[];
+  high24h: number;
+  low24h: number;
 }
 
 interface CryptoChannelsData {
@@ -53,93 +56,109 @@ function formatPercent(value: number): string {
   return `${prefix}${value.toFixed(2)}%`;
 }
 
-function buildBarChartSvg(items: CoinMarketItem[]): string {
-  const width = 420;
-  const height = 190;
-  const paddingTop = 16;
-  const paddingRight = 12;
-  const paddingBottom = 42;
-  const paddingLeft = 12;
-  const plotWidth = width - paddingLeft - paddingRight;
-  const plotHeight = height - paddingTop - paddingBottom;
-  const maxVolume = Math.max(...items.map((item) => item.volume24h), 1);
-  const step = plotWidth / items.length;
-  const barWidth = Math.max(18, step * 0.62);
+function formatPrice(value: number): string {
+  if (value >= 1) return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(6)}`;
+}
 
-  const bars = items
-    .map((item, index) => {
-      const volume = Math.max(item.volume24h, 0);
-      const barHeight = (volume / maxVolume) * plotHeight;
-      const x = paddingLeft + step * index + (step - barWidth) / 2;
-      const y = paddingTop + plotHeight - barHeight;
-      const color = item.change24h >= 0 ? '#02bd75' : '#e0345c';
-      const labelX = x + barWidth / 2;
-      return `
-        <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" fill="${color}" fill-opacity="0.86"></rect>
-        <text x="${labelX.toFixed(1)}" y="${(height - 20).toFixed(1)}" text-anchor="middle" class="crypto-bar-label">${escapeHtml(item.symbol.toUpperCase())}</text>
-      `;
-    })
-    .join('');
+// --- SVG / HTML Builders ---
 
-  return `
-    <svg viewBox="0 0 ${width} ${height}" class="crypto-volume-chart" role="img" aria-label="${escapeHtml(t('components.cryptoChannels.volumeChannel'))}">
-      <line x1="${paddingLeft}" y1="${paddingTop + plotHeight}" x2="${width - paddingRight}" y2="${paddingTop + plotHeight}" stroke="rgba(255,255,255,0.18)" stroke-width="1"></line>
-      ${bars}
-    </svg>
-  `;
+function buildMiniSparklineSvg(data: number[], w = 36, h = 14): string {
+  if (!data || data.length < 2) return '';
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const lastChange = data[data.length - 1]! - data[0]!;
+  const color = lastChange >= 0 ? '#02bd75' : '#e0345c';
+  const points = data
+    .map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - ((v - min) / range) * (h - 2) - 1).toFixed(1)}`)
+    .join(' ');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="crypto-mini-sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angleRad: number): { x: number; y: number } {
-  return {
-    x: cx + radius * Math.cos(angleRad),
-    y: cy + radius * Math.sin(angleRad),
-  };
+  return { x: cx + radius * Math.cos(angleRad), y: cy + radius * Math.sin(angleRad) };
 }
 
 function arcPath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
   const start = polarToCartesian(cx, cy, radius, startAngle);
   const end = polarToCartesian(cx, cy, radius, endAngle);
   const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
-  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`;
+  return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
 }
 
 function buildPieChartSvg(slices: Array<{ label: string; value: number; color: string }>, centerLabel: string): string {
-  const total = slices.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
-  const width = 220;
-  const height = 220;
-  const cx = 110;
-  const cy = 110;
-  const radius = 82;
+  const total = slices.reduce((sum, s) => sum + Math.max(0, s.value), 0);
+  const w = 110;
+  const h = 110;
+  const cx = 55;
+  const cy = 55;
+  const r = 46;
+  const ir = 24;
 
   if (total <= 0) {
-    return `
-      <svg viewBox="0 0 ${width} ${height}" class="crypto-share-chart">
-        <circle cx="${cx}" cy="${cy}" r="${radius}" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" />
-        <text x="${cx}" y="${cy}" text-anchor="middle" class="crypto-pie-center">${escapeHtml(centerLabel)}</text>
-      </svg>
-    `;
+    return `<svg viewBox="0 0 ${w} ${h}" class="crypto-share-chart"><circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,0.05)" /><text x="${cx}" y="${cy}" text-anchor="middle" class="crypto-pie-center">${escapeHtml(centerLabel)}</text></svg>`;
   }
 
   let start = -Math.PI / 2;
   const paths = slices
-    .filter((slice) => slice.value > 0)
-    .map((slice) => {
-      const angle = (slice.value / total) * Math.PI * 2;
+    .filter((s) => s.value > 0)
+    .map((s) => {
+      const angle = (s.value / total) * Math.PI * 2;
       const end = start + angle;
-      const path = arcPath(cx, cy, radius, start, end);
+      const outer = arcPath(cx, cy, r, start, end);
+      const inner = arcPath(cx, cy, ir, end, start);
+      const seg = `${outer} L ${inner}`;
       start = end;
-      return `<path d="${path}" fill="${slice.color}" fill-opacity="0.88"></path>`;
+      return `<path d="${seg}" fill="${s.color}" fill-opacity="0.85"></path>`;
     })
     .join('');
 
-  return `
-    <svg viewBox="0 0 ${width} ${height}" class="crypto-share-chart" role="img" aria-label="${escapeHtml(t('components.cryptoChannels.mcapChannel'))}">
-      ${paths}
-      <circle cx="${cx}" cy="${cy}" r="43" fill="rgba(5,10,15,0.9)"></circle>
-      <text x="${cx}" y="${cy - 4}" text-anchor="middle" class="crypto-pie-center">${escapeHtml(centerLabel)}</text>
-      <text x="${cx}" y="${cy + 16}" text-anchor="middle" class="crypto-pie-sub">${escapeHtml(t('components.cryptoChannels.shares'))}</text>
-    </svg>
-  `;
+  return `<svg viewBox="0 0 ${w} ${h}" class="crypto-share-chart">${paths}<circle cx="${cx}" cy="${cy}" r="${ir - 1}" fill="var(--overlay-subtle)" /><text x="${cx}" y="${cy + 1}" text-anchor="middle" dominant-baseline="central" class="crypto-pie-center">${escapeHtml(centerLabel)}</text></svg>`;
+}
+
+function buildHeatmapCells(coins: CoinMarketItem[]): string {
+  const sorted = [...coins].sort((a, b) => b.change24h - a.change24h);
+  return sorted
+    .map((c) => {
+      const abs = Math.abs(c.change24h);
+      const dir = c.change24h >= 0 ? 'up' : 'down';
+      let intensity: number;
+      if (abs >= 5) intensity = 4;
+      else if (abs >= 3) intensity = 3;
+      else if (abs >= 1.5) intensity = 2;
+      else if (abs >= 0.5) intensity = 1;
+      else intensity = 0;
+      const cls = intensity > 0 ? `crypto-heat-${dir}-${intensity}` : '';
+      return `<div class="crypto-heat-cell ${cls}">
+        <span class="crypto-heat-sym">${escapeHtml(c.symbol)}</span>
+        <span class="crypto-heat-val" style="color:${c.change24h >= 0 ? '#02bd75' : '#e0345c'}">${formatPercent(c.change24h)}</span>
+      </div>`;
+    })
+    .join('');
+}
+
+function buildGaugeSvg(percent: number, label: string): string {
+  const w = 120;
+  const h = 68;
+  const cx = 60;
+  const cy = 56;
+  const r = 44;
+  const lw = 8;
+  const startAngle = Math.PI;
+  const endAngle = 0;
+  const pctAngle = startAngle + (endAngle - startAngle) * Math.min(Math.max(percent, 0), 100) / 100;
+
+  const bgPath = arcPath(cx, cy, r, startAngle, endAngle);
+  const fgPath = arcPath(cx, cy, r, startAngle, pctAngle);
+
+  return `<svg viewBox="0 0 ${w} ${h}" class="crypto-gauge-svg">
+    <path d="${bgPath}" fill="none" stroke="var(--overlay-light)" stroke-width="${lw}" stroke-linecap="round"></path>
+    <path d="${fgPath}" fill="none" stroke="#f7931a" stroke-width="${lw}" stroke-linecap="round"></path>
+    <text x="${cx}" y="${cy - 10}" text-anchor="middle" class="crypto-gauge-val">${percent.toFixed(1)}%</text>
+    <text x="${cx}" y="${cy + 2}" text-anchor="middle" class="crypto-gauge-label">${escapeHtml(label)}</text>
+  </svg>`;
 }
 
 export class CryptoChannelsPanel extends Panel {
@@ -153,7 +172,7 @@ export class CryptoChannelsPanel extends Panel {
     const saved = localStorage.getItem(PANEL_SPANS_KEY);
     let spans: Record<string, number> = {};
     try {
-      spans = saved ? JSON.parse(saved) as Record<string, number> : {};
+      spans = saved ? (JSON.parse(saved) as Record<string, number>) : {};
     } catch {
       spans = {};
     }
@@ -178,17 +197,14 @@ export class CryptoChannelsPanel extends Panel {
 
   private async fetchData(): Promise<void> {
     try {
-      const marketsUrl = `/api/coingecko?endpoint=markets&vs_currencies=usd&ids=${TRACKED_IDS.join(',')}`;
-      const [marketsRes, stableRes] = await Promise.allSettled([
-        fetch(marketsUrl),
-        fetch('/api/stablecoin-markets'),
-      ]);
+      const marketsUrl = `/api/coingecko?endpoint=markets&vs_currencies=usd&ids=${TRACKED_IDS.join(',')}&sparkline=true`;
+      const [marketsRes, stableRes] = await Promise.allSettled([fetch(marketsUrl), fetch('/api/stablecoin-markets')]);
 
       if (marketsRes.status !== 'fulfilled' || !marketsRes.value.ok) {
         throw new Error('markets unavailable');
       }
 
-      const marketsJson = await marketsRes.value.json() as Array<Record<string, unknown>>;
+      const marketsJson = (await marketsRes.value.json()) as Array<Record<string, unknown>>;
       if (!Array.isArray(marketsJson)) throw new Error('markets malformed');
 
       const coins: CoinMarketItem[] = marketsJson
@@ -200,22 +216,28 @@ export class CryptoChannelsPanel extends Panel {
           marketCap: asNumber(row.market_cap),
           volume24h: asNumber(row.total_volume),
           change24h: asNumber(row.price_change_percentage_24h),
+          high24h: asNumber(row.high_24h),
+          low24h: asNumber(row.low_24h),
+          sparkline7d: Array.isArray(
+            (row.sparkline_in_7d as { price: number[] } | undefined)?.price,
+          )
+            ? ((row.sparkline_in_7d as { price: number[] }).price as number[]).slice(-48)
+            : [],
         }))
         .filter((coin) => coin.id && coin.symbol);
 
       let stablecoinMarketCap = 0;
       if (stableRes.status === 'fulfilled' && stableRes.value.ok) {
-        const stableJson = await stableRes.value.json() as { summary?: { totalMarketCap?: number }; unavailable?: boolean };
+        const stableJson = (await stableRes.value.json()) as {
+          summary?: { totalMarketCap?: number };
+          unavailable?: boolean;
+        };
         if (!stableJson?.unavailable) {
           stablecoinMarketCap = asNumber(stableJson?.summary?.totalMarketCap);
         }
       }
 
-      this.data = {
-        timestamp: new Date().toISOString(),
-        coins,
-        stablecoinMarketCap,
-      };
+      this.data = { timestamp: new Date().toISOString(), coins, stablecoinMarketCap };
       this.error = null;
     } catch {
       this.error = t('common.failedToLoad');
@@ -241,85 +263,168 @@ export class CryptoChannelsPanel extends Panel {
       return;
     }
 
-    const byMarketCap = [...this.data.coins].sort((a, b) => b.marketCap - a.marketCap);
-    const byVolume = [...this.data.coins].sort((a, b) => b.volume24h - a.volume24h);
+    const coins = this.data.coins;
+    const byMarketCap = [...coins].sort((a, b) => b.marketCap - a.marketCap);
+    const byVolume = [...coins].sort((a, b) => b.volume24h - a.volume24h);
+    const byChange = [...coins].sort((a, b) => b.change24h - a.change24h);
     const topVolume = byVolume.slice(0, 6);
-    const trackedMarketCap = byMarketCap.reduce((sum, coin) => sum + coin.marketCap, 0);
-    const avgMove = this.data.coins.reduce((sum, coin) => sum + coin.change24h, 0) / this.data.coins.length;
-    const advancers = this.data.coins.filter((coin) => coin.change24h > 0).length;
-    const decliners = this.data.coins.filter((coin) => coin.change24h < 0).length;
-    const leader = byVolume[0];
-    const btcCap = byMarketCap.find((coin) => coin.id === 'bitcoin')?.marketCap || 0;
-    const ethCap = byMarketCap.find((coin) => coin.id === 'ethereum')?.marketCap || 0;
+
+    // Computed metrics
+    const trackedMarketCap = byMarketCap.reduce((s, c) => s + c.marketCap, 0);
+    const totalVolume = coins.reduce((s, c) => s + c.volume24h, 0);
+    const avgMove = coins.reduce((s, c) => s + c.change24h, 0) / coins.length;
+    const advancers = coins.filter((c) => c.change24h > 0).length;
+    const decliners = coins.filter((c) => c.change24h < 0).length;
+    const btcCap = byMarketCap.find((c) => c.id === 'bitcoin')?.marketCap || 0;
+    const ethCap = byMarketCap.find((c) => c.id === 'ethereum')?.marketCap || 0;
     const stableCap = this.data.stablecoinMarketCap;
-    const otherTrackedCap = Math.max(trackedMarketCap - btcCap - ethCap, 0);
+    const otherCap = Math.max(trackedMarketCap - btcCap - ethCap, 0);
     const trackedPlusStable = trackedMarketCap + Math.max(stableCap, 0);
     const stableShare = trackedPlusStable > 0 ? (stableCap / trackedPlusStable) * 100 : 0;
+    const btcDom = trackedMarketCap > 0 ? (btcCap / trackedMarketCap) * 100 : 0;
+    const volToMcap = trackedMarketCap > 0 ? (totalVolume / trackedMarketCap) * 100 : 0;
+    const upVolume = coins.filter((c) => c.change24h > 0).reduce((s, c) => s + c.volume24h, 0);
+    const downVolume = coins.filter((c) => c.change24h <= 0).reduce((s, c) => s + c.volume24h, 0);
+    const totalVolSignal = upVolume + downVolume || 1;
+    const bestPerformer = byChange[0];
+    const worstPerformer = byChange[byChange.length - 1];
+
+    // --- Q1: Coin Table ---
+    const tableRows = byMarketCap
+      .map(
+        (c) => `<tr class="crypto-row">
+        <td class="crypto-coin-sym">${escapeHtml(c.symbol)}</td>
+        <td class="crypto-coin-price">${formatPrice(c.currentPrice)}</td>
+        <td class="crypto-coin-change" style="color:${c.change24h >= 0 ? '#02bd75' : '#e0345c'}">${formatPercent(c.change24h)}</td>
+        <td class="crypto-coin-vol">${formatCompactUsd(c.volume24h)}</td>
+        <td class="crypto-coin-mcap">${formatCompactUsd(c.marketCap)}</td>
+        <td>${buildMiniSparklineSvg(c.sparkline7d)}</td>
+      </tr>`,
+      )
+      .join('');
+
+    // --- Q2: Volume bars + Pie ---
+    const maxVol = Math.max(...topVolume.map((c) => c.volume24h), 1);
+    const volumeBars = topVolume
+      .map((c) => {
+        const pct = (c.volume24h / maxVol) * 100;
+        const color = c.change24h >= 0 ? '#02bd75' : '#e0345c';
+        return `<div class="crypto-hbar-row">
+          <span class="crypto-hbar-label">${escapeHtml(c.symbol)}</span>
+          <div class="crypto-hbar-track"><div class="crypto-hbar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+          <span class="crypto-hbar-val">${formatCompactUsd(c.volume24h)}</span>
+        </div>`;
+      })
+      .join('');
 
     const pieSlices = [
       { label: 'BTC', value: btcCap, color: '#f7931a' },
       { label: 'ETH', value: ethCap, color: '#627eea' },
-      { label: 'Stablecoins', value: stableCap, color: '#00bfa5' },
-      { label: 'Others', value: otherTrackedCap, color: '#8c9eff' },
+      { label: 'Stable', value: stableCap, color: '#00bfa5' },
+      { label: 'Others', value: otherCap, color: '#8c9eff' },
     ];
-
-    const barChartSvg = buildBarChartSvg(topVolume);
-    const pieChartSvg = buildPieChartSvg(pieSlices, formatCompactUsd(trackedPlusStable));
-
+    const pieSvg = buildPieChartSvg(pieSlices, formatCompactUsd(trackedPlusStable));
     const pieLegend = pieSlices
-      .filter((slice) => slice.value > 0)
-      .map((slice) => {
-        const ratio = trackedPlusStable > 0 ? (slice.value / trackedPlusStable) * 100 : 0;
-        return `
-          <div class="crypto-legend-item">
-            <span class="crypto-legend-dot" style="background:${slice.color}"></span>
-            <span class="crypto-legend-name">${escapeHtml(slice.label)}</span>
-            <span class="crypto-legend-value">${ratio.toFixed(1)}%</span>
-          </div>
-        `;
+      .filter((s) => s.value > 0)
+      .map((s) => {
+        const ratio = trackedPlusStable > 0 ? (s.value / trackedPlusStable) * 100 : 0;
+        return `<div class="crypto-legend-item"><span class="crypto-legend-dot" style="background:${s.color}"></span><span class="crypto-legend-name">${escapeHtml(s.label)}</span><span class="crypto-legend-value">${ratio.toFixed(1)}%</span></div>`;
       })
       .join('');
 
+    // --- Q3: Heatmap ---
+    const heatmapHtml = buildHeatmapCells(coins);
+
+    // --- Q4: Gauge + Volume Ratio ---
+    const gaugeSvg = buildGaugeSvg(btcDom, 'BTC Dominance');
+    const upPct = (upVolume / totalVolSignal) * 100;
+
     const html = `
       <div class="crypto-channels-container">
-        <div class="crypto-channels-summary">
-          <div class="crypto-summary-item">
-            <span class="crypto-summary-label">${t('components.cryptoChannels.trackedMcap')}</span>
-            <span class="crypto-summary-value">${formatCompactUsd(trackedMarketCap)}</span>
+        <div class="crypto-summary-ribbon">
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.trackedMcap')}</span>
+            <span class="crypto-metric-value">${formatCompactUsd(trackedMarketCap)}</span>
           </div>
-          <div class="crypto-summary-item">
-            <span class="crypto-summary-label">${t('components.cryptoChannels.breadth')}</span>
-            <span class="crypto-summary-value">${advancers}↑ / ${decliners}↓</span>
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.totalVolume')}</span>
+            <span class="crypto-metric-value">${formatCompactUsd(totalVolume)}</span>
           </div>
-          <div class="crypto-summary-item">
-            <span class="crypto-summary-label">${t('components.cryptoChannels.avgMove')}</span>
-            <span class="crypto-summary-value ${avgMove >= 0 ? 'change-positive' : 'change-negative'}">${formatPercent(avgMove)}</span>
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.btcDom')}</span>
+            <span class="crypto-metric-value">${btcDom.toFixed(1)}%</span>
           </div>
-          <div class="crypto-summary-item">
-            <span class="crypto-summary-label">${t('components.cryptoChannels.leaderVolume')}</span>
-            <span class="crypto-summary-value">${escapeHtml(leader?.symbol || 'N/A')} · ${formatCompactUsd(leader?.volume24h || 0)}</span>
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.breadth')}</span>
+            <span class="crypto-metric-value"><span style="color:#02bd75">${advancers}↑</span> / <span style="color:#e0345c">${decliners}↓</span></span>
+          </div>
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.avgMove')}</span>
+            <span class="crypto-metric-value" style="color:${avgMove >= 0 ? '#02bd75' : '#e0345c'}">${formatPercent(avgMove)}</span>
+          </div>
+          <div class="crypto-metric-pill">
+            <span class="crypto-metric-label">${t('components.cryptoChannels.volMcap')}</span>
+            <span class="crypto-metric-value">${volToMcap.toFixed(2)}%</span>
           </div>
         </div>
 
-        <div class="crypto-chart-grid">
-          <div class="crypto-chart-card">
-            <div class="crypto-chart-title">${t('components.cryptoChannels.volumeChannel')}</div>
-            ${barChartSvg}
+        <div class="crypto-quadrant-grid">
+          <div class="crypto-quadrant">
+            <div class="crypto-q-title">${t('components.cryptoChannels.trackedAssets')}</div>
+            <div class="crypto-table-wrap">
+              <table class="crypto-coin-table">
+                <thead><tr>
+                  <th>Symbol</th><th>Price</th><th>24h</th><th>Vol</th><th>MCap</th><th>7d</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+              </table>
+            </div>
           </div>
-          <div class="crypto-chart-card">
-            <div class="crypto-chart-title">${t('components.cryptoChannels.mcapChannel')}</div>
-            ${pieChartSvg}
-            <div class="crypto-legend">${pieLegend}</div>
+          <div class="crypto-quadrant">
+            <div class="crypto-q-title">${t('components.cryptoChannels.volComposition')}</div>
+            <div class="crypto-q-section">${volumeBars}</div>
+            <div class="crypto-q-sep"></div>
+            <div class="crypto-pie-row">
+              ${pieSvg}
+              <div class="crypto-legend">${pieLegend}</div>
+            </div>
+          </div>
+          <div class="crypto-quadrant">
+            <div class="crypto-q-title">${t('components.cryptoChannels.performance')}</div>
+            <div class="crypto-heatmap">${heatmapHtml}</div>
+          </div>
+          <div class="crypto-quadrant">
+            <div class="crypto-q-title">${t('components.cryptoChannels.marketStructure')}</div>
+            <div class="crypto-gauge-wrap">${gaugeSvg}</div>
+            <div class="crypto-q-sep"></div>
+            <div class="crypto-volratio-section">
+              <div class="crypto-volratio-header">
+                <span class="crypto-volratio-label">${t('components.cryptoChannels.upVol')}</span>
+                <span class="crypto-volratio-val" style="color:#02bd75">${formatCompactUsd(upVolume)}</span>
+                <span class="crypto-volratio-label" style="margin-left:8px">${t('components.cryptoChannels.downVol')}</span>
+                <span class="crypto-volratio-val" style="color:#e0345c">${formatCompactUsd(downVolume)}</span>
+              </div>
+              <div class="crypto-volratio-bar">
+                <div class="crypto-volratio-up" style="width:${upPct.toFixed(1)}%"></div>
+                <div class="crypto-volratio-down" style="width:${(100 - upPct).toFixed(1)}%"></div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="crypto-channels-footer">
           <span>${t('components.cryptoChannels.stableShare')}: ${stableShare.toFixed(1)}%</span>
+          <span>
+            <span style="color:#02bd75">${escapeHtml(bestPerformer?.symbol ?? '')} ${formatPercent(bestPerformer?.change24h ?? 0)}</span>
+            &nbsp;/&nbsp;
+            <span style="color:#e0345c">${escapeHtml(worstPerformer?.symbol ?? '')} ${formatPercent(worstPerformer?.change24h ?? 0)}</span>
+          </span>
           <span>${t('components.cryptoChannels.updated')}: ${new Date(this.data.timestamp).toLocaleTimeString()}</span>
         </div>
       </div>
     `;
 
+    this.content.innerHTML = '';
     this.setContent(html);
   }
 }

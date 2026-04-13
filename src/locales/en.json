@@ -506,7 +506,16 @@
       "mcapChannel": "Market Cap Mix",
       "shares": "Shares",
       "stableShare": "Stablecoin Share",
-      "updated": "Updated"
+      "updated": "Updated",
+      "totalVolume": "Total Vol",
+      "btcDom": "BTC Dom",
+      "volMcap": "Vol/MCap",
+      "trackedAssets": "Tracked Assets",
+      "performance": "24h Performance",
+      "marketStructure": "Market Structure",
+      "volComposition": "Volume & Composition",
+      "upVol": "Up Vol",
+      "downVol": "Down Vol"
     },
     "status": {
       "dataFeeds": "Data Feeds",

@@ -495,14 +495,23 @@
     },
     "cryptoChannels": {
       "trackedMcap": "跟踪市值",
-      "breadth": "24小时涨跌家数",
-      "avgMove": "24小时平均涨跌",
+      "breadth": "24h涨跌家数",
+      "avgMove": "24h平均涨跌",
       "leaderVolume": "成交量龙头",
-      "volumeChannel": "24小时成交量柱状图",
+      "volumeChannel": "24h成交量柱状图",
       "mcapChannel": "市值结构饼图",
       "shares": "占比",
       "stableShare": "稳定币占比",
-      "updated": "更新时间"
+      "updated": "更新时间",
+      "totalVolume": "总成交量",
+      "btcDom": "BTC主导率",
+      "volMcap": "成交量/市值",
+      "trackedAssets": "跟踪资产",
+      "performance": "24h涨跌热力图",
+      "marketStructure": "市场结构",
+      "volComposition": "成交量与构成",
+      "upVol": "上涨成交量",
+      "downVol": "下跌成交量"
     },
     "status": {
       "dataFeeds": "数据源",
