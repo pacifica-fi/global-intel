@@ -51,7 +51,6 @@ import {
   PredictionPanel,
   MonitorPanel,
   Panel,
-  SignalModal,
   PlaybackControl,
   StatusPanel,
   EconomicPanel,
@@ -72,12 +71,12 @@ import {
   MacroSignalsPanel,
   ETFFlowsPanel,
   StablecoinPanel,
-  CryptoChannelsPanel,
   DisplacementPanel,
   ClimateAnomalyPanel,
   InvestmentsPanel,
   LanguageSelector,
   HormuzTrafficPanel,
+  SignalBanner,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -129,7 +128,7 @@ export class App {
   private monitors: Monitor[];
   private panelSettings: Record<string, PanelConfig>;
   private mapLayers: MapLayers;
-  private signalModal: SignalModal | null = null;
+  private signalBanner: SignalBanner | null = null;
   private playbackControl: PlaybackControl | null = null;
   private statusPanel: StatusPanel | null = null;
   private exportPanel: ExportPanel | null = null;
@@ -349,20 +348,9 @@ export class App {
 
     this.renderLayout();
     this.startHeaderClock();
-    this.signalModal = new SignalModal();
-    this.signalModal.setLocationClickHandler((lat, lon) => {
-      this.map?.setCenter(lat, lon, 4);
-    });
+    this.signalBanner = new SignalBanner();
     if (!this.isMobile) {
       this.findingsBadge = new IntelligenceGapBadge();
-      this.findingsBadge.setOnSignalClick((signal) => {
-        if (this.countryBriefPage?.isVisible()) return;
-        this.signalModal?.showSignal(signal);
-      });
-      this.findingsBadge.setOnAlertClick((alert) => {
-        if (this.countryBriefPage?.isVisible()) return;
-        this.signalModal?.showAlert(alert);
-      });
     }
     this.setupMobileWarning();
     this.setupPlaybackControl();
@@ -1152,10 +1140,6 @@ export class App {
     document.body.appendChild(el);
     requestAnimationFrame(() => el.classList.add('visible'));
     setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
-  }
-
-  private shouldShowIntelligenceNotifications(): boolean {
-    return !this.isMobile && !!this.findingsBadge?.isEnabled();
   }
 
   private setupSearchModal(): void {
@@ -2125,7 +2109,6 @@ export class App {
     this.panels['macro-signals'] = new MacroSignalsPanel();
     this.panels['etf-flows'] = new ETFFlowsPanel();
     this.panels['stablecoins'] = new StablecoinPanel();
-    this.panels['crypto-channels'] = new CryptoChannelsPanel();
 
     // AI Insights Panel (desktop only - hides itself on mobile)
     const insightsPanel = new InsightsPanel();
@@ -3547,13 +3530,13 @@ export class App {
           if (surgeAlerts.length > 0) {
             const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
             addToSignalHistory(surgeSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(surgeSignals);
+            this.signalBanner?.show(surgeSignals);
           }
           const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
           if (foreignAlerts.length > 0) {
             const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
             addToSignalHistory(foreignSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(foreignSignals);
+            this.signalBanner?.show(foreignSignals);
           }
         }
       } catch (error) {
@@ -3917,13 +3900,13 @@ export class App {
         if (surgeAlerts.length > 0) {
           const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
           addToSignalHistory(surgeSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(surgeSignals);
+          this.signalBanner?.show(surgeSignals);
         }
         const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
         if (foreignAlerts.length > 0) {
           const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
           addToSignalHistory(foreignSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(foreignSignals);
+          this.signalBanner?.show(foreignSignals);
         }
       }
 
@@ -4074,7 +4057,7 @@ export class App {
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.signalModal?.show(allSignals);
+        this.signalBanner?.show(allSignals);
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);

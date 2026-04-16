@@ -3510,6 +3510,79 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   }
 }
 
+/* Signal Banner (news push notification) */
+.signal-banner-container {
+  position: fixed;
+  top: 44px;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.signal-banner-container.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.signal-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border: 1px solid var(--banner-color, var(--accent));
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 12px color-mix(in srgb, var(--banner-color, var(--accent)) 25%, transparent);
+  pointer-events: auto;
+  max-width: 600px;
+  width: 90%;
+}
+
+.signal-banner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--banner-color, var(--accent));
+  flex-shrink: 0;
+  animation: banner-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes banner-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.signal-banner-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signal-banner-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.signal-banner-close:hover {
+  color: var(--text);
+}
+
 /* Playback Control */
 .playback-control {
   position: relative;

@@ -11,7 +11,6 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'live-news': { name: 'Live News', enabled: true, priority: 1 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
-  'crypto-channels': { name: 'Crypto Channels', enabled: true, priority: 2 },
   'hormuz-traffic': { name: 'Strait of Hormuz Traffic', enabled: true, priority: 1 },
   commodities: { name: 'Commodities', enabled: true, priority: 1 },
   markets: { name: 'Markets', enabled: true, priority: 1 },
@@ -452,7 +451,6 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
       'gccNews',
       'etf-flows',
       'stablecoins',
-      'crypto-channels',
       'heatmap',
     ],
     variants: ['full'],
@@ -486,7 +484,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'finance', 'economic', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto-channels', 'world-clock'],
+    panelKeys: ['markets', 'finance', 'economic', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'world-clock'],
     variants: ['tech'],
   },
 
@@ -508,7 +506,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   cryptoDigital: {
     labelKey: 'header.panelCatCryptoDigital',
-    panelKeys: ['etf-flows', 'stablecoins', 'crypto-channels', 'fintech'],
+    panelKeys: ['etf-flows', 'stablecoins', 'fintech'],
     variants: ['finance'],
   },
   centralBanksEcon: {
