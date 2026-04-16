@@ -349,6 +349,14 @@ export class App {
     this.renderLayout();
     this.startHeaderClock();
     this.signalBanner = new SignalBanner();
+    this.signalBanner.setNavigateHandler((panelId) => {
+      const panel = this.newsPanels[panelId];
+      if (panel) {
+        panel.getElement().scrollIntoView({ behavior: 'smooth', block: 'center' });
+        panel.getElement().classList.add('panel-flash-highlight');
+        setTimeout(() => panel.getElement().classList.remove('panel-flash-highlight'), 2000);
+      }
+    });
     if (!this.isMobile) {
       this.findingsBadge = new IntelligenceGapBadge();
     }
