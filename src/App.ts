@@ -33,7 +33,7 @@ import { fetchUcdpEvents, deduplicateAgainstAcled } from '@/services/ucdp-events
 import { fetchUnhcrPopulation } from '@/services/unhcr';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
-import { buildMapUrl, debounce, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
+import { buildMapUrl, debounce, formatTime, loadFromStorage, parseMapUrlState, saveToStorage, ExportPanel, getCircuitBreakerCooldownInfo, isMobileDevice, setTheme, getCurrentTheme } from '@/utils';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { CountryBriefPage } from '@/components/CountryBriefPage';
 import { CountryTimeline, type TimelineEvent } from '@/components/CountryTimeline';
@@ -2967,6 +2967,8 @@ export class App {
     return labels[range];
   }
 
+  private seenNewsUrls = new Set<string>();
+
   private renderNewsForCategory(category: string, items: NewsItem[]): void {
     this.newsByCategory[category] = items;
     const panel = this.newsPanels[category];
@@ -2976,6 +2978,31 @@ export class App {
       panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
       return;
     }
+
+    // Detect genuinely new headlines (skip first load)
+    if (this.seenNewsUrls.size > 0) {
+      const newItems = items.filter(item => !this.seenNewsUrls.has(item.link));
+      if (newItems.length > 0) {
+        const top = newItems[0]!;
+        this.signalBanner?.show([{
+          id: `news-${category}-${top.link}`,
+          type: 'velocity_spike' as const,
+          title: top.title,
+          description: `${top.source} · ${formatTime(top.pubDate)}`,
+          confidence: 0.8,
+          timestamp: top.pubDate,
+          data: {},
+        }]);
+      }
+    }
+
+    for (const item of items) this.seenNewsUrls.add(item.link);
+    // Keep set bounded
+    if (this.seenNewsUrls.size > 5000) {
+      const arr = [...this.seenNewsUrls];
+      this.seenNewsUrls = new Set(arr.slice(arr.length - 3000));
+    }
+
     panel.renderNews(filteredItems);
   }
 
