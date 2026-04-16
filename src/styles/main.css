@@ -3281,7 +3281,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--bg);
+  background: rgba(0, 0, 0, 0.75);
   display: none;
   justify-content: center;
   align-items: center;
