@@ -21,6 +21,7 @@ const TYPE_COLORS: Record<string, string> = {
 export class SignalBanner {
   private container: HTMLElement;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private shownIds = new Set<string>();
 
   constructor() {
     this.container = document.createElement('div');
@@ -32,9 +33,20 @@ export class SignalBanner {
   show(signals: CorrelationSignal[]): void {
     if (!signals.length) return;
 
-    // Show only the highest-confidence signal
-    const sorted = [...signals].sort((a, b) => b.confidence - a.confidence);
-    const top = sorted[0]!;
+    // Only show signals we haven't already displayed
+    const fresh = signals.filter(s => !this.shownIds.has(s.id));
+    if (!fresh.length) return;
+
+    for (const s of fresh) this.shownIds.add(s.id);
+
+    // Keep set from growing forever
+    if (this.shownIds.size > 200) {
+      const arr = [...this.shownIds];
+      this.shownIds = new Set(arr.slice(arr.length - 100));
+    }
+
+    // Pick the highest-confidence fresh signal
+    const top = [...fresh].sort((a, b) => b.confidence - a.confidence)[0]!;
     const color = TYPE_COLORS[top.type] ?? 'var(--accent)';
 
     this.container.innerHTML = `

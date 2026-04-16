@@ -82,14 +82,17 @@ export default async function handler(req) {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`, 'X-Cache': 'MISS', ...corsHeaders },
     });
   } catch (error) {
-    // Stale fallback
+    // Stale fallback (max 1 hour old)
     const stale = memoryCache.get(cacheKey);
     if (stale && isValid(stale.data)) {
-      recordCacheTelemetry('/api/hormuz-status', 'MEMORY-ERROR-FALLBACK');
-      return new Response(JSON.stringify(stale.data), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=60`, 'X-Cache': 'MEMORY-ERROR-FALLBACK', ...corsHeaders },
-      });
+      const staleAgeMs = Date.now() - stale.timestamp;
+      if (staleAgeMs < 60 * 60 * 1000) {
+        recordCacheTelemetry('/api/hormuz-status', 'MEMORY-ERROR-FALLBACK');
+        return new Response(JSON.stringify(stale.data), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=60`, 'X-Cache': 'MEMORY-ERROR-FALLBACK', ...corsHeaders },
+        });
+      }
     }
     recordCacheTelemetry('/api/hormuz-status', 'ERROR');
     return new Response(JSON.stringify({ error: error.message || 'Fetch failed' }), {

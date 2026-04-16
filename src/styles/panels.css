@@ -416,6 +416,22 @@
   margin-right: 4px;
 }
 
+.hq-news-time {
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.hq-news-time.stale {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.hq-news-time.aging {
+  color: var(--yellow);
+}
+
 /* Footer */
 .hq-footer {
   display: flex;

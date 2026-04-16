@@ -287,6 +287,7 @@ export class HormuzTrafficPanel extends Panel {
         <div class="hq-news">
           ${news.slice(0, 6).map((n: HormuzNewsItem) => `
             <a class="hq-news-item" href="${this.esc(n.url)}" target="_blank" rel="noopener noreferrer">
+              <span class="hq-news-time ${this.newsStaleness(n.publishedAt)}">${this.relativeTime(n.publishedAt)}</span>
               <span class="hq-news-source">${this.esc(n.source)}</span>
               ${this.esc(n.title)}
             </a>
@@ -321,6 +322,29 @@ export class HormuzTrafficPanel extends Panel {
   private esc(s: unknown): string {
     if (s == null) return '';
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  private relativeTime(dateStr: string): string {
+    if (!dateStr) return '';
+    const d = new Date(dateStr.replace(' ', 'T'));
+    const diffMs = Date.now() - d.getTime();
+    if (isNaN(diffMs)) return '';
+    const mins = Math.floor(diffMs / 60_000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d`;
+  }
+
+  private newsStaleness(dateStr: string): string {
+    if (!dateStr) return '';
+    const d = new Date(dateStr.replace(' ', 'T'));
+    const hrs = (Date.now() - d.getTime()) / 3_600_000;
+    if (isNaN(hrs)) return '';
+    if (hrs > 24) return 'stale';
+    if (hrs > 6) return 'aging';
+    return '';
   }
 
   public override destroy(): void {
